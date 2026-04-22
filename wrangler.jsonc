@@ -1,0 +1,19 @@
+{
+  "name": "cyberfarm",
+  "compatibility_date": "2026-04-22",
+  "pages_build_output_dir": "dist",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cyberfarm-db",
+      "database_id": "f808b3f6-447b-4e4b-ae58-7ccaabc31808"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "cyberfarm-files",
+      "remote": true
+    }
+  ]
+}

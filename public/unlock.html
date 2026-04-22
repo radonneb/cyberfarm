@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CyberFarm Unlock</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(80, 140, 255, 0.25), transparent 35%),
+          linear-gradient(180deg, #08111f 0%, #071019 100%);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+        color: white;
+      }
+
+      .panel {
+        width: min(420px, calc(100vw - 32px));
+        padding: 28px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 28px;
+      }
+
+      p {
+        margin: 0 0 18px;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      input {
+        width: 100%;
+        padding: 14px 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        font-size: 16px;
+        outline: none;
+      }
+
+      button {
+        width: 100%;
+        margin-top: 14px;
+        padding: 14px 16px;
+        border: 0;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #78a9ff 0%, #4f8cff 100%);
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .error {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #ff9d9d;
+        min-height: 18px;
+      }
+
+      .hint {
+        margin-top: 14px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>CyberFarm</h1>
+      <p>Enter access code to open the project.</p>
+
+      <form id="unlock-form">
+        <input
+          id="code"
+          name="code"
+          type="password"
+          inputmode="numeric"
+          placeholder="Access code"
+          autocomplete="off"
+        />
+        <button type="submit">Unlock</button>
+        <div class="error" id="error"></div>
+      </form>
+
+      <div class="hint">Protected access screen</div>
+    </div>
+
+    <script>
+      const form = document.getElementById('unlock-form');
+      const input = document.getElementById('code');
+      const errorEl = document.getElementById('error');
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorEl.textContent = '';
+
+        try {
+          const response = await fetch('/api/unlock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: input.value })
+          });
+
+          const data = await response.json();
+
+          if (!response.ok || !data.ok) {
+            errorEl.textContent = data.error || 'Unlock failed.';
+            return;
+          }
+
+          window.location.href = '/';
+        } catch {
+          errorEl.textContent = 'Network error.';
+        }
+      });
+    </script>
+  </body>
+</html>
