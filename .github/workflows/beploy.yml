@@ -26,16 +26,20 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Validate Cloudflare credentials
+      - name: Debug Cloudflare env
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || (echo "CLOUDFLARE_API_TOKEN is missing" && exit 1)
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "CLOUDFLARE_ACCOUNT_ID is missing" && exit 1)
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN is missing"
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_ACCOUNT_ID is missing"
+            exit 1
+          fi
+          echo "Cloudflare env is present"
 
       - name: Install dependencies
         run: npm install
-
-      - name: Apply D1 migrations
-        run: npx wrangler d1 migrations apply cyberfarm-db --remote
 
       - name: Build project
         run: npm run build
