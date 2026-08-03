@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import MapView from '../components/MapView'
 import { useAppStore } from '../store/appStore'
 import { useMapLayers } from '../appHelpers'
 
-export default function CreateFieldPage() {
-  const navigate = useNavigate()
+type Props = {
+  onComplete?: () => void
+}
+
+export default function CreateFieldPage({ onComplete }: Props) {
   const {
     loadedTaskData,
     selectedFieldId,
@@ -32,7 +34,7 @@ export default function CreateFieldPage() {
   const saveCreate = () => {
     if (commitDraftCreate()) {
       setEditorMode('view')
-      navigate('/')
+      onComplete?.()
     }
   }
 
@@ -48,11 +50,11 @@ export default function CreateFieldPage() {
         {createMode === 'new' ? (
           <>
             <label className="form-label">Field name</label>
-            <input className="text-input compact-input" value={draftCreate.fieldName} onChange={(e) => setDraftFieldName(e.target.value)} />
+            <input className="text-input compact-input" value={draftCreate.fieldName} onChange={(event) => setDraftFieldName(event.target.value)} />
             <label className="form-label">Guidance name</label>
-            <input className="text-input compact-input" value={draftCreate.guidanceName} onChange={(e) => setDraftGuidanceName(e.target.value)} />
+            <input className="text-input compact-input" value={draftCreate.guidanceName} onChange={(event) => setDraftGuidanceName(event.target.value)} />
             <div className="hint-box compact-box">
-              1) Click Start boundary. 2) Add at least 3 boundary points. 3) Click Start guidance. 4) Add at least 2 guidance points. 5) Click Save.
+              1) Start the boundary. 2) Add at least three points. 3) Start guidance. 4) Add at least two points. 5) Save.
             </div>
             <div className="action-row compact-actions">
               <button className="ghost-btn small-btn" onClick={() => startCreateNewField(draftCreate.fieldName, draftCreate.guidanceName)}>Start boundary</button>
@@ -63,13 +65,13 @@ export default function CreateFieldPage() {
         ) : (
           <>
             <label className="form-label">Field</label>
-            <select className="text-input compact-input" value={draftFieldId} onChange={(e) => setDraftFieldId(e.target.value)}>
+            <select className="text-input compact-input" value={draftFieldId} onChange={(event) => setDraftFieldId(event.target.value)}>
               <option value="">Select field</option>
               {allFields.map((field) => <option key={field.id} value={field.id}>{field.name}</option>)}
             </select>
             <label className="form-label">Guidance name</label>
-            <input className="text-input compact-input" value={draftCreate.guidanceName} onChange={(e) => setDraftGuidanceName(e.target.value)} />
-            <div className="hint-box compact-box">Select a field, click Start guidance, place the points on the map, then save.</div>
+            <input className="text-input compact-input" value={draftCreate.guidanceName} onChange={(event) => setDraftGuidanceName(event.target.value)} />
+            <div className="hint-box compact-box">Select a field, start guidance, place the points on the map, then save.</div>
             <div className="action-row compact-actions">
               <button className="ghost-btn small-btn" onClick={() => draftFieldId && startCreateGuidanceForField(draftFieldId, draftCreate.guidanceName)}>Start guidance</button>
               <button className="success-btn small-btn" onClick={saveCreate}>Save</button>

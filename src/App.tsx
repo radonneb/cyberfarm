@@ -1,27 +1,27 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
-import AppLayout from './layouts/AppLayout'
-import HomePage from './pages/HomePage'
-import CreateFieldPage from './pages/CreateFieldPage'
-import GenerateLinesPage from './pages/GenerateLinesPage'
-import EditFieldPage from './pages/EditFieldPage'
-import ExportPage from './pages/ExportPage'
-import AIExportPage from './pages/AIExportPage'
+import { AuthProvider, useAuth } from './auth/AuthContext'
+import LoginPage from './pages/LoginPage'
+import WorkspacePage from './pages/WorkspacePage'
 import './App.css'
 
-function App() {
-  return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/create-field" element={<CreateFieldPage />} />
-        <Route path="/generate-lines" element={<GenerateLinesPage />} />
-        <Route path="/edit-field" element={<EditFieldPage />} />
-        <Route path="/export" element={<ExportPage />} />
-        <Route path="/ai-export" element={<AIExportPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
-  )
+function AppGate() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <main className="app-loading-screen">
+        <div className="loading-mark">CF</div>
+        <span>Loading CyberFarms…</span>
+      </main>
+    )
+  }
+
+  return user ? <WorkspacePage /> : <LoginPage />
 }
 
-export default App
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppGate />
+    </AuthProvider>
+  )
+}
