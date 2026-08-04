@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { FarmProvider } from './farms/FarmContext'
+import AcceptInvitePage from './pages/AcceptInvitePage'
 import LoginPage from './pages/LoginPage'
 import WorkspacePage from './pages/WorkspacePage'
 import './App.css'
@@ -26,6 +27,10 @@ function AppGate() {
 }
 
 export default function App() {
+  if (window.location.pathname === '/accept-invite') {
+    return <AcceptInvitePage />
+  }
+
   return (
     <AuthProvider>
       <AppGate />
