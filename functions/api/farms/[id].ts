@@ -1,5 +1,6 @@
 import { json, requireAdmin, type Env } from '../../lib/auth'
 import { requireFarm } from '../../lib/farms'
+import { deleteProjectData } from '../../lib/projectData'
 
 type UpdateFarmBody = { name?: string; archived?: boolean }
 
@@ -88,15 +89,15 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
     .prepare(`
       SELECT DISTINCT f.id, f.r2_key
       FROM files f
-      JOIN project_files pf ON pf.file_id = f.id
-      JOIN projects p ON p.id = pf.project_id
-      WHERE p.farm_id = ?
+      LEFT JOIN project_files pf ON pf.file_id = f.id
+      LEFT JOIN projects p ON p.id = pf.project_id
+      WHERE f.farm_id = ? OR p.farm_id = ?
     `)
-    .bind(id)
+    .bind(id, id)
     .all<Record<string, unknown>>()
 
   const projects = await env.DB
-    .prepare('SELECT id FROM projects WHERE farm_id = ?')
+    .prepare('SELECT id, project_data_key FROM projects WHERE farm_id = ?')
     .bind(id)
     .all<Record<string, unknown>>()
 
@@ -121,6 +122,10 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
   )
 
   await env.DB.batch(statements)
+
+  for (const project of projects.results ?? []) {
+    await deleteProjectData(env, project.project_data_key)
+  }
 
   for (const file of files.results ?? []) {
     const fileId = String(file.id)
