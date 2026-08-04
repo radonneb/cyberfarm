@@ -1,4 +1,5 @@
 import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
+import { canAccessFarm, requireFarm } from '../../lib/farms'
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env, params }) => {
   const auth = await requireUser(request, env)
@@ -7,7 +8,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
   const id = String(params.id)
   const row = await env.DB
     .prepare(`
-      SELECT id, r2_key, original_name, content_type
+      SELECT id, farm_id, r2_key, original_name, content_type
       FROM files
       WHERE id = ?
     `)
@@ -17,16 +18,24 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
   if (!row) return json({ ok: false, error: 'File not found.' }, 404)
 
   if (auth.user.role !== 'admin') {
-    const links = await env.DB
-      .prepare('SELECT project_id FROM project_files WHERE file_id = ?')
-      .bind(id)
-      .all<Record<string, unknown>>()
-
     let allowed = false
-    for (const link of links.results ?? []) {
-      if (await canViewProject(auth.user, String(link.project_id), env)) {
-        allowed = true
-        break
+    const farmId = String(row.farm_id ?? '').trim()
+
+    if (farmId) {
+      allowed = (await canAccessFarm(auth.user, farmId, env)).allowed
+    }
+
+    if (!allowed) {
+      const links = await env.DB
+        .prepare('SELECT project_id FROM project_files WHERE file_id = ?')
+        .bind(id)
+        .all<Record<string, unknown>>()
+
+      for (const link of links.results ?? []) {
+        if (await canViewProject(auth.user, String(link.project_id), env)) {
+          allowed = true
+          break
+        }
       }
     }
 
@@ -43,4 +52,37 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
   headers.set('ETag', object.httpEtag)
 
   return new Response(object.body, { headers })
+}
+
+export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params }) => {
+  const auth = await requireUser(request, env)
+  if (auth.response || !auth.user) return auth.response
+
+  const id = String(params.id)
+  const file = await env.DB
+    .prepare('SELECT id, farm_id, r2_key FROM files WHERE id = ?')
+    .bind(id)
+    .first<Record<string, unknown>>()
+  if (!file) return json({ ok: false, error: 'File not found.' }, 404)
+
+  const farmId = String(file.farm_id ?? '').trim()
+  if (farmId) {
+    const farmAccess = await requireFarm(request, env, farmId, true)
+    if (farmAccess.response) return farmAccess.response
+  } else if (auth.user.role !== 'admin') {
+    return json({ ok: false, error: 'File not found.' }, 404)
+  }
+
+  const linked = await env.DB
+    .prepare('SELECT COUNT(*) AS count FROM project_files WHERE file_id = ?')
+    .bind(id)
+    .first<Record<string, unknown>>()
+
+  if (Number(linked?.count ?? 0) > 0) {
+    return json({ ok: false, error: 'Detach the file from its project before deleting it.' }, 409)
+  }
+
+  await env.FILES.delete(String(file.r2_key))
+  await env.DB.prepare('DELETE FROM files WHERE id = ?').bind(id).run()
+  return json({ ok: true })
 }
