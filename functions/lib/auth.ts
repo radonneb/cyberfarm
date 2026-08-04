@@ -88,9 +88,10 @@ export async function verifyPassword(password: string, encodedHash: string) {
   const iterations = Number(iterationsRaw)
   if (!iterations || !saltRaw || !hashRaw) return false
 
-  const expected = base64ToBytes(hashRaw)
+  let expected: Uint8Array
   let actual: Uint8Array
   try {
+    expected = base64ToBytes(hashRaw)
     actual = await derivePassword(password, base64ToBytes(saltRaw), iterations)
   } catch {
     return false
