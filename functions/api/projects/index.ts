@@ -1,6 +1,6 @@
 import { json, requireUser, type Env } from '../../lib/auth'
 import { claimFileForFarm } from '../../lib/files'
-import { canAccessFarm, getActiveFarm, requireFarm } from '../../lib/farms'
+import { canAccessFarm, getActiveFarm, requireFarmZone } from '../../lib/farms'
 import { deleteProjectData, writeProjectData } from '../../lib/projectData'
 
 type CreateProjectBody = {
@@ -54,7 +54,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     if (!farmId) return json({ ok: false, error: 'Farm is required.' }, 400)
 
-    const access = await requireFarm(request, env, farmId, true)
+    const access = await requireFarmZone(request, env, farmId, 'maps', true)
     if (access.response) return access.response
 
     const id = crypto.randomUUID()

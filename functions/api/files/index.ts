@@ -1,5 +1,5 @@
 import { json, requireAdmin, requireUser, type Env } from '../../lib/auth'
-import { requireFarm } from '../../lib/farms'
+import { requireFarmZone } from '../../lib/farms'
 
 function safeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-160) || 'upload.bin'
@@ -31,7 +31,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const farmId = String(formData.get('farmId') ?? '').trim()
     if (!farmId) return json({ ok: false, error: 'Farm is required.' }, 400)
 
-    const farmAccess = await requireFarm(request, env, farmId, true)
+    const farmAccess = await requireFarmZone(request, env, farmId, 'maps', true)
     if (farmAccess.response) return farmAccess.response
 
     const value = formData.get('file')

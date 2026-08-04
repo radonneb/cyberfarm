@@ -4,6 +4,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/session',
+  '/api/invitations/inspect',
+  '/api/invitations/accept',
 ])
 
 export const onRequest: PagesFunction<Env> = async (context) => {

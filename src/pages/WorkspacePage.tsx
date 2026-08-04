@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { useFarm, type FarmSummary } from '../farms/FarmContext'
+import { useFarm, type FarmSummary, type FarmZone } from '../farms/FarmContext'
 import { useAppStore } from '../store/appStore'
 import { apiRequest } from '../services/api'
 import { cloneField, type TaskDataModel } from '../models/taskData'
@@ -67,13 +67,13 @@ const tools: Array<{
   label: string
   icon: string
   description: string
-  adminOnly?: boolean
+  zone: FarmZone
 }> = [
-  { id: 'overview', label: 'Maps', icon: '⌖', description: 'Map tools and planting' },
-  { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Irrigation frame' },
-  { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank' },
-  { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats' },
-  { id: 'access', label: 'Access', icon: '◎', description: 'Users and permissions', adminOnly: true },
+  { id: 'overview', label: 'Maps', icon: '⌖', description: 'Map tools and planting', zone: 'maps' },
+  { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Irrigation frame', zone: 'pivot' },
+  { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank', zone: 'bunker' },
+  { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats', zone: 'export' },
+  { id: 'access', label: 'Access', icon: '◎', description: 'Users and permissions', zone: 'access' },
 ]
 
 const mapTools: Array<{
@@ -81,13 +81,13 @@ const mapTools: Array<{
   label: string
   icon: string
   description: string
-  adminOnly?: boolean
+  manageOnly?: boolean
 }> = [
   { id: 'overview', label: 'Map overview', icon: '⌖', description: 'Fields and guidance' },
-  { id: 'create', label: 'Create', icon: '+', description: 'Field or guidance', adminOnly: true },
-  { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', adminOnly: true },
-  { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', adminOnly: true },
-  { id: 'planting', label: 'Planting', icon: '⁙', description: 'Pass, seeds and yield', adminOnly: true },
+  { id: 'create', label: 'Create', icon: '+', description: 'Field or guidance', manageOnly: true },
+  { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', manageOnly: true },
+  { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', manageOnly: true },
+  { id: 'planting', label: 'Planting', icon: '⁙', description: 'Pass, seeds and yield', manageOnly: true },
 ]
 
 const mapToolIds = new Set<WorkspaceTool>(mapTools.map((tool) => tool.id))
@@ -159,6 +159,7 @@ export default function WorkspacePage() {
   const {
     farms,
     activeFarm,
+    permissions,
     loading: loadingFarms,
     error: farmError,
     createFarm,
@@ -178,6 +179,7 @@ export default function WorkspacePage() {
 
   const isAdmin = user?.role === 'admin'
   const canManage = isAdmin || activeFarm?.role === 'editor'
+  const canManageMaps = Boolean(canManage && permissions.maps)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const projectLoadRef = useRef(0)
@@ -194,6 +196,42 @@ export default function WorkspacePage() {
   const [mapMenuOpen, setMapMenuOpen] = useState(false)
   const [newFarmName, setNewFarmName] = useState('')
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
+  const saveZone: Exclude<FarmZone, 'access'> | null = activeTool === 'pivot'
+    ? 'pivot'
+    : activeTool === 'bunker'
+      ? 'bunker'
+      : mapToolIds.has(activeTool)
+        ? 'maps'
+        : null
+  const canSaveActiveZone = Boolean(canManage && saveZone && permissions[saveZone])
+
+  const allowedTools = useMemo(() => {
+    const allowed = new Set<WorkspaceTool>()
+    if (permissions.maps) {
+      allowed.add('overview')
+      allowed.add('files')
+      if (canManageMaps) {
+        allowed.add('create')
+        allowed.add('edit')
+        allowed.add('generate')
+        allowed.add('planting')
+      }
+    }
+    if (permissions.pivot) allowed.add('pivot')
+    if (permissions.bunker) allowed.add('bunker')
+    if (permissions.export) allowed.add('export')
+    if (isAdmin) allowed.add('access')
+    return allowed
+  }, [permissions, canManageMaps, isAdmin])
+
+  useEffect(() => {
+    if (allowedTools.has(activeTool)) return
+    const fallback = (['overview', 'pivot', 'bunker', 'export', 'access'] as WorkspaceTool[])
+      .find((tool) => allowedTools.has(tool))
+    if (!fallback) return
+    const timer = window.setTimeout(() => setActiveTool(fallback), 0)
+    return () => window.clearTimeout(timer)
+  }, [activeTool, allowedTools])
 
   const activeProject = useMemo(
     () => projects.find((project) => project.id === activeProjectId) ?? null,
@@ -272,7 +310,7 @@ export default function WorkspacePage() {
   }, [activeFarm?.id])
 
   useEffect(() => {
-    if (!canManage || !activeProjectId || !loadedTaskData || busy) return
+    if (!canSaveActiveZone || !saveZone || !activeProjectId || !loadedTaskData || busy) return
 
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     setSaveState('saving')
@@ -284,6 +322,7 @@ export default function WorkspacePage() {
           name: activeFarm?.name ?? activeProject?.name ?? 'Farm workspace',
           fileName: currentFileName,
           projectData: loadedTaskData,
+          zone: saveZone,
         }),
       })
         .then(() => setSaveState('saved'))
@@ -296,12 +335,12 @@ export default function WorkspacePage() {
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     }
-  }, [dataVersion, activeProjectId, canManage])
+  }, [dataVersion, activeProjectId, canSaveActiveZone, saveZone])
 
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file || !canManage) return
+    if (!file || !canManageMaps) return
 
     setBusy(true)
     setStatusMessage('Reading the imported file…')
@@ -333,7 +372,7 @@ export default function WorkspacePage() {
   }
 
   const commitImport = async () => {
-    if (!pendingImport || !canManage) return
+    if (!pendingImport || !canManageMaps) return
 
     let uploadedFileId: string | null = null
     setBusy(true)
@@ -475,7 +514,7 @@ export default function WorkspacePage() {
   }
 
   const handleNewMap = async () => {
-    if (!canManage || !activeFarm) return
+    if (!canManageMaps || !activeFarm) return
 
     setBusy(true)
     try {
@@ -506,7 +545,7 @@ export default function WorkspacePage() {
     }
   }
 
-  const visibleTools = tools.filter((tool) => !tool.adminOnly || canManage)
+  const visibleTools = tools.filter((tool) => allowedTools.has(tool.id))
   const canDisplayWorkspace = Boolean(loadedTaskData)
 
   const renderTool = () => {
@@ -521,7 +560,7 @@ export default function WorkspacePage() {
               ? 'All fields, source files and later GeoTIFF or route layers will stay inside this farm.'
               : 'A farm is the top-level workspace. Data from different farms is never mixed on one map.'}
           </p>
-          {canManage && (
+          {canManageMaps && (
             <div className="action-row centered-actions">
               <button className="primary-btn" onClick={() => fileInputRef.current?.click()}>Import fields</button>
               {activeFarm && <button className="ghost-btn" onClick={() => void handleNewMap()}>Create empty map</button>}
@@ -538,7 +577,7 @@ export default function WorkspacePage() {
             projectId={activeProjectId}
             projectName={activeFarm?.name ?? 'Farm files'}
             farmId={activeFarm?.id ?? null}
-            isAdmin={Boolean(canManage)}
+            isAdmin={canManageMaps}
           />
         )
       case 'create':
@@ -570,8 +609,8 @@ export default function WorkspacePage() {
       case 'access':
         return (
           <AdminAccessPanel
-            activeProjectId={activeProjectId}
-            activeProjectName={activeFarm?.name ?? 'Select a farm'}
+            activeFarmId={activeFarm?.id ?? null}
+            activeFarmName={activeFarm?.name ?? 'Select a farm'}
           />
         )
       default:
@@ -589,7 +628,9 @@ export default function WorkspacePage() {
   }
 
   const mapSectionActive = mapToolIds.has(activeTool)
-  const visibleMapTools = mapTools.filter((tool) => !tool.adminOnly || canManage)
+  const visibleMapTools = permissions.maps
+    ? mapTools.filter((tool) => !tool.manageOnly || canManageMaps)
+    : []
 
   const openRailTool = (tool: WorkspaceTool) => {
     setProfileOpen(false)
@@ -680,21 +721,23 @@ export default function WorkspacePage() {
                 ))}
               </div>
 
-              <button
-                className={`profile-files-link ${activeTool === 'files' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTool('files')
-                  setProfileOpen(false)
-                  setMapMenuOpen(false)
-                }}
-              >
-                <span className="profile-files-icon">▣</span>
-                <span>
-                  <strong>Farm files</strong>
-                  <small>{projects.reduce((sum, project) => sum + project.fileCount, 0)} source files</small>
-                </span>
-                <b>›</b>
-              </button>
+              {permissions.maps && (
+                <button
+                  className={`profile-files-link ${activeTool === 'files' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveTool('files')
+                    setProfileOpen(false)
+                    setMapMenuOpen(false)
+                  }}
+                >
+                  <span className="profile-files-icon">▣</span>
+                  <span>
+                    <strong>Farm files</strong>
+                    <small>{projects.reduce((sum, project) => sum + project.fileCount, 0)} source files</small>
+                  </span>
+                  <b>›</b>
+                </button>
+              )}
 
               {isAdmin && (
                 <div className="quick-farm-create">
@@ -733,7 +776,7 @@ export default function WorkspacePage() {
             </div>
           </div>
 
-          {canManage && (
+          {canManageMaps && (
             <div className="workspace-actions">
               {activeFarm && <button className="ghost-btn" onClick={() => void handleNewMap()} disabled={busy}>Empty map</button>}
               <button className="primary-btn" onClick={() => fileInputRef.current?.click()} disabled={busy}>

@@ -835,7 +835,7 @@ select.text-input:focus {
 .admin-access-layout {
   min-height: 0;
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: minmax(340px, 390px) minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -844,33 +844,158 @@ select.text-input:focus {
   overflow: auto;
 }
 
+.access-create-card .section-title,
+.access-list-card .section-title {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.access-create-card .muted-copy {
+  margin-top: 10px;
+}
+
 .access-form {
   margin-top: 22px;
 }
 
-.access-user-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
+.access-zone-label {
+  display: block;
+  margin: 5px 0 9px;
 }
 
-.access-user-row {
+.access-zone-grid,
+.access-member-zones {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  gap: 7px;
+}
+
+.access-zone-option,
+.access-member-zones label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+}
+
+.access-zone-option.active,
+.access-member-zones label.active {
+  border-color: rgba(77, 187, 120, 0.3);
+  background: var(--green-soft);
+}
+
+.access-zone-option.locked,
+.access-member-zones label.locked {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.access-zone-option input,
+.access-member-zones input {
+  accent-color: var(--green);
+}
+
+.access-zone-option span,
+.access-zone-option strong,
+.access-zone-option small {
+  display: block;
+}
+
+.access-zone-option strong {
+  font-size: 12px;
+}
+
+.access-zone-option small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.access-zone-option b,
+.access-member-zones b {
+  color: var(--muted);
+  font-size: 15px;
+  text-align: center;
+}
+
+.access-zone-option.active b,
+.access-member-zones label.active b {
+  color: var(--green);
+}
+
+.access-send-button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 15px;
+}
+
+.access-list-card .inline-alert {
+  margin: 14px 0 0;
+  color: var(--text);
+}
+
+.access-group {
+  margin-top: 18px;
+}
+
+.access-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+}
+
+.access-group-title span {
+  min-width: 24px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  text-align: center;
+}
+
+.access-invitation-list,
+.access-member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.access-invitation-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 11px;
   padding: 11px;
   border-radius: 16px;
   background: var(--surface-soft);
 }
 
+.access-user-copy {
+  min-width: 0;
+}
+
 .access-user-copy strong,
-.access-user-copy span {
+.access-user-copy span,
+.access-user-copy small {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .access-user-copy strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .access-user-copy span {
@@ -879,17 +1004,181 @@ select.text-input:focus {
   font-size: 10px;
 }
 
-.permission-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  color: var(--muted);
-  cursor: pointer;
+.access-user-copy small {
+  margin-top: 4px;
+  color: var(--green);
+  font-size: 9px;
 }
 
-.permission-toggle input {
-  accent-color: var(--green);
+.invite-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green-deep);
+  font-size: 9px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.invite-status.warning {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.access-row-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.ghost-btn.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.access-member-card {
+  padding: 12px;
+  border-radius: 17px;
+  background: var(--surface-soft);
+}
+
+.access-member-card.disabled {
+  opacity: 0.58;
+}
+
+.access-member-head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 116px auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.access-role-select {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 11px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.access-role-select option {
+  background: #0b2017;
+}
+
+.access-member-zones {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.access-member-zones label {
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+  min-height: 40px;
+  padding: 7px 8px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+/* Invitation acceptance */
+.invite-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 18% 16%, rgba(77, 187, 120, 0.2), transparent 28%),
+    radial-gradient(circle at 84% 82%, rgba(242, 201, 76, 0.16), transparent 25%);
+}
+
+.invite-card {
+  width: min(540px, 100%);
+  padding: clamp(24px, 5vw, 42px);
+  border-radius: 26px;
+}
+
+.invite-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 30px;
+}
+
+.invite-brand span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--yellow);
+  color: #25301f;
+  font-weight: 900;
+}
+
+.invite-brand strong {
+  font-size: 16px;
+}
+
+.invite-loading,
+.invite-error-state,
+.invite-success {
+  padding: 24px 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.invite-card h1 {
+  margin-top: 7px;
+  font-size: clamp(30px, 6vw, 42px);
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+}
+
+.invite-intro {
+  margin-top: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.invite-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.invite-summary div {
+  padding: 13px;
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.invite-summary span,
+.invite-summary strong {
+  display: block;
+}
+
+.invite-summary span {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.invite-summary strong {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.invite-form .primary-btn {
+  width: 100%;
+  min-height: 49px;
+  margin-top: 5px;
 }
 
 @media (max-width: 1280px) {
@@ -1020,13 +1309,33 @@ select.text-input:focus {
     flex: 1;
   }
 
-  .access-user-row {
-    grid-template-columns: 40px minmax(0, 1fr);
+  .access-invitation-row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
   }
 
-  .permission-toggle,
-  .access-user-row .ghost-btn {
+  .access-invitation-row .access-row-actions {
+    grid-column: 2 / -1;
+  }
+
+  .access-member-head {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .access-member-head .access-role-select,
+  .access-member-head .ghost-btn {
     grid-column: 2;
+  }
+
+  .access-member-zones {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .invite-page {
+    padding: 12px;
+  }
+
+  .invite-summary {
+    grid-template-columns: 1fr;
   }
 }
 
