@@ -1,5 +1,7 @@
 import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
+import { claimFileForFarm } from '../../lib/files'
 import { requireFarm } from '../../lib/farms'
+import { deleteProjectData, readProjectData, writeProjectData } from '../../lib/projectData'
 
 type UpdateProjectBody = {
   name?: string
@@ -19,7 +21,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 
   const row = await env.DB
     .prepare(`
-      SELECT id, name, file_name, farm_id, created_at, updated_at, project_json
+      SELECT id, name, file_name, farm_id, created_at, updated_at,
+             project_json, project_data_key
       FROM projects
       WHERE id = ?
     `)
@@ -30,9 +33,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 
   let projectData: unknown = null
   try {
-    projectData = row.project_json ? JSON.parse(String(row.project_json)) : null
-  } catch {
-    projectData = null
+    projectData = await readProjectData(row, env)
+  } catch (error) {
+    console.error('Read project data failed', error)
+    return json({ ok: false, error: 'Unable to load project map data.' }, 500)
   }
 
   const files = await env.DB
@@ -69,7 +73,11 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
     const id = String(params.id)
     const body = (await request.json()) as UpdateProjectBody
     const existing = await env.DB
-      .prepare('SELECT id, name, file_name, farm_id FROM projects WHERE id = ?')
+      .prepare(`
+        SELECT id, name, file_name, farm_id, project_data_key
+        FROM projects
+        WHERE id = ?
+      `)
       .bind(id)
       .first<Record<string, unknown>>()
 
@@ -84,17 +92,41 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
     const fileName = body.fileName === undefined
       ? (existing.file_name ? String(existing.file_name) : null)
       : (String(body.fileName ?? '').trim() || null)
-
-    await env.DB
-      .prepare(`
-        UPDATE projects
-        SET name = ?, file_name = ?, updated_at = ?, project_json = ?
-        WHERE id = ?
-      `)
-      .bind(name, fileName, now, JSON.stringify(body.projectData ?? null), id)
-      .run()
-
     const fileId = String(body.fileId ?? '').trim()
+
+    if (fileId && !(await claimFileForFarm(fileId, farmId, env))) {
+      return json({ ok: false, error: 'File not found.' }, 404)
+    }
+
+    if (body.projectData !== undefined) {
+      const key = await writeProjectData(
+        env,
+        farmId,
+        id,
+        body.projectData,
+        String(existing.project_data_key ?? '') || null,
+      )
+
+      await env.DB
+        .prepare(`
+          UPDATE projects
+          SET name = ?, file_name = ?, updated_at = ?,
+              project_json = NULL, project_data_key = ?
+          WHERE id = ?
+        `)
+        .bind(name, fileName, now, key, id)
+        .run()
+    } else {
+      await env.DB
+        .prepare(`
+          UPDATE projects
+          SET name = ?, file_name = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .bind(name, fileName, now, id)
+        .run()
+    }
+
     if (fileId) {
       await env.DB
         .prepare(`
@@ -118,7 +150,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
 
   const id = String(params.id)
   const project = await env.DB
-    .prepare('SELECT farm_id FROM projects WHERE id = ?')
+    .prepare('SELECT farm_id, project_data_key FROM projects WHERE id = ?')
     .bind(id)
     .first<Record<string, unknown>>()
   if (!project) return json({ ok: false, error: 'Project not found.' }, 404)
@@ -141,6 +173,8 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
     env.DB.prepare('DELETE FROM project_files WHERE project_id = ?').bind(id),
     env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id),
   ])
+
+  await deleteProjectData(env, project.project_data_key)
 
   for (const file of attachedFiles.results ?? []) {
     const fileId = String(file.id)
