@@ -17,7 +17,7 @@ export type AuthUser = {
 
 const SESSION_COOKIE = 'cyberfarm_auth'
 const SESSION_DAYS = 7
-const PASSWORD_ITERATIONS = 120_000
+const PASSWORD_ITERATIONS = 600_000
 
 export function json(data: unknown, status = 200, headers?: HeadersInit) {
   return new Response(JSON.stringify(data), {
