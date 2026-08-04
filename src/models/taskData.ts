@@ -54,8 +54,23 @@ export type PivotTrackConfig = {
   wheels: PivotTrackWheelConfig[]
 }
 
+export type PlantingPlanConfig = {
+  fieldId: string | null
+  operation: 'seeding'
+  workingWidthMeters: number
+  coulterCount: number
+  seedSpacingCm: number
+  crop: string
+  yieldEnabled: boolean
+  yieldUnitsPerPlant: number
+  grainsPerUnit: number
+  weightSampleCount: number
+  weightSampleGrams: number
+}
+
 export type FarmToolData = {
   pivotTracks?: Record<string, PivotTrackConfig>
+  plantingPlans?: Record<string, PlantingPlanConfig>
 }
 
 export type TaskDataModel = {
