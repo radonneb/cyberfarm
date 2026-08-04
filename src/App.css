@@ -1742,6 +1742,592 @@ select.text-input option {
   }
 }
 
+/* 2026 workspace readability and grouped navigation */
+:root {
+  --muted: #aebfb4;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  line-height: 1.42;
+}
+
+body {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+button {
+  font-weight: 750;
+}
+
+.glass-panel,
+.page-card,
+.workspace-topbar {
+  border-color: rgba(174, 221, 190, 0.14);
+  background: linear-gradient(145deg, rgba(14, 43, 30, 0.94), rgba(7, 26, 18, 0.93));
+}
+
+.workspace-title-wrap h1,
+.section-title,
+.field-item-v2 strong,
+.info-block-title strong {
+  font-weight: 820;
+}
+
+.workspace-meta,
+.muted-copy,
+.empty-panel,
+.hint-box,
+.draft-info-box,
+.result-detail,
+.field-item-v2 span,
+.info-block-title span {
+  color: var(--muted);
+}
+
+.field-item-v2 {
+  min-height: 54px;
+  padding: 12px 14px;
+}
+
+.field-item-v2 strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.field-item-v2 span {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.details-stack {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.right-panel-card > .details-stack {
+  height: 100%;
+}
+
+.details-stack > .page-card {
+  padding: 14px;
+}
+
+.details-stack .grow-card {
+  min-height: 0;
+  overflow: auto;
+}
+
+.meta-chip-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.meta-chip {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.meta-chip span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.meta-chip strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.metric-card strong,
+.info-block-title strong,
+.coord-item code {
+  overflow-wrap: anywhere;
+}
+
+.info-block-title {
+  align-items: flex-start;
+}
+
+.info-block-title strong {
+  min-width: 0;
+}
+
+.info-block-title span {
+  flex: 0 0 auto;
+}
+
+.coord-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+.coord-item code {
+  min-width: 0;
+  color: #d6e4da;
+  white-space: normal;
+}
+
+.map-tool-drawer {
+  position: absolute;
+  z-index: 120;
+  top: 77px;
+  left: 68px;
+  width: 292px;
+  padding: 12px;
+  border: 1px solid rgba(169, 223, 188, 0.22);
+  border-radius: 20px;
+  background: #0a2117;
+  box-shadow: 0 28px 75px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation: map-drawer-in 160ms ease-out;
+}
+
+@keyframes map-drawer-in {
+  from { opacity: 0; transform: translateX(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.map-tool-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 5px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.map-tool-drawer-head span {
+  display: grid;
+  gap: 1px;
+}
+
+.map-tool-drawer-head small {
+  color: #7fd9a0;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+}
+
+.map-tool-drawer-head strong {
+  font-size: 19px;
+}
+
+.map-tool-drawer-head button {
+  width: 31px;
+  height: 31px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.map-tool-drawer-list {
+  display: grid;
+  gap: 5px;
+  padding-top: 9px;
+}
+
+.map-tool-drawer-item,
+.profile-files-link {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-tool-drawer-item:hover,
+.map-tool-drawer-item.active,
+.profile-files-link:hover,
+.profile-files-link.active {
+  background: rgba(242, 201, 76, 0.15);
+  color: var(--yellow);
+}
+
+.map-tool-drawer-icon,
+.profile-files-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.065);
+  font-size: 18px;
+}
+
+.map-tool-drawer-item > span:nth-child(2),
+.profile-files-link > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.map-tool-drawer-item strong,
+.profile-files-link strong {
+  font-size: 12px;
+}
+
+.map-tool-drawer-item small,
+.profile-files-link small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.map-tool-drawer-item b,
+.profile-files-link b {
+  font-size: 18px;
+}
+
+.profile-popover {
+  width: 330px;
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(169, 223, 188, 0.22);
+  background: #0a2117;
+  box-shadow: 0 30px 85px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.profile-popover-head strong {
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.profile-popover-head span {
+  color: #b6c7bc;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.farm-switch-row {
+  min-height: 46px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.farm-switch-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.profile-files-link {
+  width: 100%;
+  margin-top: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Planting pass and yield calculator */
+.planting-layout {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 304px minmax(390px, 1fr) 302px;
+  gap: 12px;
+}
+
+.planting-controls,
+.planting-results {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.planting-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.planting-input-field {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+}
+
+.planting-input-field > span,
+.planting-derived-field > span {
+  min-height: 30px;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.planting-input-field .text-input {
+  margin: 0;
+}
+
+.planting-derived-field {
+  display: grid;
+  grid-template-rows: 30px 42px;
+}
+
+.planting-derived-field strong {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid rgba(242, 201, 76, 0.17);
+  border-radius: 13px;
+  background: var(--yellow-soft);
+  color: var(--yellow);
+  font-size: 13px;
+}
+
+.yield-toggle {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+}
+
+.yield-toggle input {
+  margin-top: 3px;
+  accent-color: var(--yellow);
+}
+
+.yield-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.yield-toggle strong {
+  font-size: 12px;
+}
+
+.yield-toggle small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.yield-settings {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.planting-pdf-btn {
+  width: 100%;
+  margin-top: 3px;
+}
+
+.planting-visual-card {
+  position: relative;
+  min-width: 0;
+  min-height: 540px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.planting-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.planting-result-list {
+  display: grid;
+  gap: 8px;
+}
+
+.planting-result-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  padding: 12px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.planting-result-card > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.planting-result-card i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.planting-result-card strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.planting-result-card small {
+  color: #d3ded6;
+  font-size: 9px;
+}
+
+.planting-result-card.square-metre > span { color: #ff7ac8; }
+.planting-result-card.hectare > span { color: #f2c94c; }
+.planting-result-card.whole-field > span { color: #67d993; }
+
+.planting-formula-card {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 13px;
+  border-radius: 15px;
+  background: rgba(77, 187, 120, 0.1);
+}
+
+.planting-formula-card > span {
+  color: #8ce0a9;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.planting-formula-card code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.planting-formula-card small,
+.planting-disclaimer {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.planting-yield-kicker {
+  margin-top: 20px;
+}
+
+.yield-result-grid {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.yield-result-grid article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: var(--yellow-soft);
+}
+
+.yield-result-grid span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.yield-result-grid strong {
+  color: var(--yellow);
+  font-size: 14px;
+}
+
+.planting-disclaimer {
+  margin-top: 10px;
+}
+
+@media (max-width: 1240px) {
+  .planting-layout {
+    grid-template-columns: 290px minmax(0, 1fr);
+  }
+
+  .planting-results {
+    grid-column: 1 / -1;
+    max-height: 280px;
+  }
+}
+
+@media (max-width: 720px) {
+  .map-tool-drawer {
+    position: fixed;
+    inset: auto 8px 75px 8px;
+    width: auto;
+  }
+
+  .profile-popover {
+    width: min(330px, calc(100vw - 16px));
+    max-height: calc(100vh - 92px);
+  }
+
+  .planting-layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .planting-controls,
+  .planting-results {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .planting-visual-card {
+    min-height: 620px;
+  }
+
+  .planting-results {
+    grid-column: auto;
+  }
+}
+
 /* Pivot Track */
 .pivot-layout {
   min-height: 0;

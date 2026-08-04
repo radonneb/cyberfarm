@@ -14,6 +14,7 @@ import ProjectFilesPanel from '../components/ProjectFilesPanel'
 
 const PivotTrackPage = lazy(() => import('./PivotTrackPage'))
 const GrainBunkerPage = lazy(() => import('./GrainBunkerPage'))
+const PlantingPage = lazy(() => import('./PlantingPage'))
 
 type WorkspaceTool =
   | 'overview'
@@ -21,6 +22,7 @@ type WorkspaceTool =
   | 'create'
   | 'edit'
   | 'generate'
+  | 'planting'
   | 'pivot'
   | 'bunker'
   | 'export'
@@ -67,16 +69,28 @@ const tools: Array<{
   description: string
   adminOnly?: boolean
 }> = [
-  { id: 'overview', label: 'Map', icon: '⌖', description: 'Fields and guidance' },
-  { id: 'files', label: 'Files', icon: '▣', description: 'Farm source files' },
-  { id: 'create', label: 'Create', icon: '+', description: 'Field or guidance', adminOnly: true },
-  { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', adminOnly: true },
-  { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', adminOnly: true },
+  { id: 'overview', label: 'Maps', icon: '⌖', description: 'Map tools and planting' },
   { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Wheel tracks' },
   { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank' },
   { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats' },
   { id: 'access', label: 'Access', icon: '◎', description: 'Users and permissions', adminOnly: true },
 ]
+
+const mapTools: Array<{
+  id: WorkspaceTool
+  label: string
+  icon: string
+  description: string
+  adminOnly?: boolean
+}> = [
+  { id: 'overview', label: 'Map overview', icon: '⌖', description: 'Fields and guidance' },
+  { id: 'create', label: 'Create', icon: '+', description: 'Field or guidance', adminOnly: true },
+  { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', adminOnly: true },
+  { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', adminOnly: true },
+  { id: 'planting', label: 'Planting', icon: '⁙', description: 'Pass, seeds and yield', adminOnly: true },
+]
+
+const mapToolIds = new Set<WorkspaceTool>(mapTools.map((tool) => tool.id))
 
 function normalizeProject(project: ProjectSummaryRaw): ProjectSummary {
   return {
@@ -177,6 +191,7 @@ export default function WorkspacePage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [mapMenuOpen, setMapMenuOpen] = useState(false)
   const [newFarmName, setNewFarmName] = useState('')
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
 
@@ -532,6 +547,12 @@ export default function WorkspacePage() {
         return <EditFieldPage />
       case 'generate':
         return <GenerateLinesPage />
+      case 'planting':
+        return (
+          <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Planting…</h2></section>}>
+            <PlantingPage />
+          </Suspense>
+        )
       case 'pivot':
         return (
           <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Pivot Track…</h2></section>}>
@@ -567,6 +588,24 @@ export default function WorkspacePage() {
     )
   }
 
+  const mapSectionActive = mapToolIds.has(activeTool)
+  const visibleMapTools = mapTools.filter((tool) => !tool.adminOnly || canManage)
+
+  const openRailTool = (tool: WorkspaceTool) => {
+    setProfileOpen(false)
+    if (tool === 'overview') {
+      if (mapSectionActive) {
+        setMapMenuOpen((current) => !current)
+      } else {
+        setActiveTool('overview')
+        setMapMenuOpen(true)
+      }
+      return
+    }
+    setActiveTool(tool)
+    setMapMenuOpen(false)
+  }
+
   return (
     <div className="workspace-shell dark-glass-shell">
       <aside className="tool-rail">
@@ -576,15 +615,47 @@ export default function WorkspacePage() {
           {visibleTools.map((tool) => (
             <button
               key={tool.id}
-              className={`tool-rail-item ${activeTool === tool.id ? 'active' : ''}`}
+              className={`tool-rail-item ${tool.id === 'overview' ? (mapSectionActive ? 'active' : '') : (activeTool === tool.id ? 'active' : '')}`}
               title={`${tool.label} — ${tool.description}`}
-              onClick={() => setActiveTool(tool.id)}
+              aria-expanded={tool.id === 'overview' ? mapMenuOpen : undefined}
+              onClick={() => openRailTool(tool.id)}
             >
               <span className="tool-rail-icon">{tool.icon}</span>
               <small>{tool.label}</small>
             </button>
           ))}
         </nav>
+
+        {mapMenuOpen && (
+          <section className="map-tool-drawer" aria-label="Map tools">
+            <div className="map-tool-drawer-head">
+              <span>
+                <small>Workspace</small>
+                <strong>Maps</strong>
+              </span>
+              <button onClick={() => setMapMenuOpen(false)} aria-label="Close map tools">×</button>
+            </div>
+            <div className="map-tool-drawer-list">
+              {visibleMapTools.map((tool) => (
+                <button
+                  key={tool.id}
+                  className={`map-tool-drawer-item ${activeTool === tool.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveTool(tool.id)
+                    setMapMenuOpen(false)
+                  }}
+                >
+                  <span className="map-tool-drawer-icon">{tool.icon}</span>
+                  <span>
+                    <strong>{tool.label}</strong>
+                    <small>{tool.description}</small>
+                  </span>
+                  <b>›</b>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="profile-menu-wrap">
           {profileOpen && (
@@ -608,6 +679,22 @@ export default function WorkspacePage() {
                   </button>
                 ))}
               </div>
+
+              <button
+                className={`profile-files-link ${activeTool === 'files' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTool('files')
+                  setProfileOpen(false)
+                  setMapMenuOpen(false)
+                }}
+              >
+                <span className="profile-files-icon">▣</span>
+                <span>
+                  <strong>Farm files</strong>
+                  <small>{projects.reduce((sum, project) => sum + project.fileCount, 0)} source files</small>
+                </span>
+                <b>›</b>
+              </button>
 
               {isAdmin && (
                 <div className="quick-farm-create">
