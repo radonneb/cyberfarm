@@ -17,7 +17,6 @@ export default function EditFieldPage() {
     updateGuidanceName,
     updateGuidancePoint,
     addGuidancePoint,
-    saveCurrentTaskData,
     dataVersion,
   } = useAppStore()
 
@@ -25,9 +24,6 @@ export default function EditFieldPage() {
   const selectedField = allFields.find((field) => field.id === selectedFieldId) ?? null
   const { polygonLayer, guidanceLayer } = useMapLayers()
 
-  const saveAll = () => {
-    if (saveCurrentTaskData()) alert('Changes saved')
-  }
 
   return (
     <div className="content-grid edit-grid-v2">
@@ -44,7 +40,7 @@ export default function EditFieldPage() {
             <label className="form-label">Field name</label>
             <input className="text-input compact-input" value={selectedField.name} onChange={(e) => updateFieldName(selectedField.id, e.target.value)} />
             <div className="action-row compact-actions sticky-actions">
-              <button className="ghost-btn small-btn" onClick={saveAll}>Save</button>
+              <span className="autosave-note">Changes save automatically</span>
               <button className="danger-btn small-btn" onClick={() => deleteField(selectedField.id)}>Delete field</button>
             </div>
 

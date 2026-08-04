@@ -1,10 +1,5 @@
-import {
-  canViewProject,
-  json,
-  requireAdmin,
-  requireUser,
-  type Env,
-} from '../../lib/auth'
+import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
+import { requireFarm } from '../../lib/farms'
 
 type UpdateProjectBody = {
   name?: string
@@ -24,7 +19,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 
   const row = await env.DB
     .prepare(`
-      SELECT id, name, file_name, created_at, updated_at, project_json
+      SELECT id, name, file_name, farm_id, created_at, updated_at, project_json
       FROM projects
       WHERE id = ?
     `)
@@ -56,6 +51,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
     project: {
       id: String(row.id),
       name: String(row.name),
+      farmId: row.farm_id ? String(row.farm_id) : null,
       fileName: row.file_name ? String(row.file_name) : null,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
@@ -66,22 +62,28 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 }
 
 export const onRequestPut: PagesFunction<Env> = async ({ request, env, params }) => {
-  const auth = await requireAdmin(request, env)
+  const auth = await requireUser(request, env)
   if (auth.response || !auth.user) return auth.response
 
   try {
     const id = String(params.id)
     const body = (await request.json()) as UpdateProjectBody
     const existing = await env.DB
-      .prepare('SELECT id FROM projects WHERE id = ?')
+      .prepare('SELECT id, name, file_name, farm_id FROM projects WHERE id = ?')
       .bind(id)
-      .first()
+      .first<Record<string, unknown>>()
 
     if (!existing) return json({ ok: false, error: 'Project not found.' }, 404)
 
+    const farmId = String(existing.farm_id ?? '')
+    const farmAccess = await requireFarm(request, env, farmId, true)
+    if (farmAccess.response) return farmAccess.response
+
     const now = new Date().toISOString()
-    const name = String(body.name ?? 'Untitled project').trim() || 'Untitled project'
-    const fileName = String(body.fileName ?? '').trim() || null
+    const name = String(body.name ?? existing.name ?? 'Farm workspace').trim() || 'Farm workspace'
+    const fileName = body.fileName === undefined
+      ? (existing.file_name ? String(existing.file_name) : null)
+      : (String(body.fileName ?? '').trim() || null)
 
     await env.DB
       .prepare(`
@@ -103,7 +105,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
         .run()
     }
 
-    return json({ ok: true })
+    return json({ ok: true, updatedAt: now })
   } catch (error) {
     console.error('Update project failed', error)
     return json({ ok: false, error: 'Failed to update project.' }, 500)
@@ -111,10 +113,19 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
 }
 
 export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params }) => {
-  const auth = await requireAdmin(request, env)
+  const auth = await requireUser(request, env)
   if (auth.response || !auth.user) return auth.response
 
   const id = String(params.id)
+  const project = await env.DB
+    .prepare('SELECT farm_id FROM projects WHERE id = ?')
+    .bind(id)
+    .first<Record<string, unknown>>()
+  if (!project) return json({ ok: false, error: 'Project not found.' }, 404)
+
+  const farmAccess = await requireFarm(request, env, String(project.farm_id ?? ''), true)
+  if (farmAccess.response) return farmAccess.response
+
   const attachedFiles = await env.DB
     .prepare(`
       SELECT f.id, f.r2_key

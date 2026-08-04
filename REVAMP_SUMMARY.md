@@ -1,18 +1,23 @@
-# CyberFarms revamp
+# CyberFarm native integration — Phase 1 summary
 
-## Included
+## Delivered in this package
 
-- One-page workspace with map, create, edit, line generation, export, file library and access management.
-- Light minimal visual system using white, green and yellow.
-- Email/password authentication with HttpOnly sessions.
-- Administrator and read-only viewer roles.
-- Per-project viewer permissions.
-- Imported and additional files stored in Cloudflare R2.
-- Project data and authorization records stored in Cloudflare D1.
-- Server-side authorization checks for every project, user and file API.
-- AI Export and the shared unlock code removed.
-- Automated D1 migrations in the Cloudflare deployment workflow.
+- Farm is now the top-level workspace boundary.
+- Active farm is persisted server-side and switched from the profile menu.
+- Imported field packages can create a farm or merge into the active farm.
+- Full task geometry and import snapshots are no longer stored in `localStorage`.
+- Project edits are automatically saved to D1; manual cloud-save UI is removed.
+- Source files are farm-scoped in R2 and can be deleted.
+- Pivot Track is a native React tool with field integration and stored configurations.
+- Grain Bunker is a native React tool with all source profiles and TXT export.
+- The application shell uses an English-only dark-green glass interface.
 
-## Deliberately unchanged
+## Not included yet
 
-The existing GIS parsers, field editing, guidance-line generation and machine export implementations remain in place. They are presented inside the new workspace rather than rewritten.
+- Email invitation acceptance and password creation.
+- Farm membership/module-permission management UI.
+- Native GeoTIFF storage, preview rendering and legends.
+- Native route sessions and deviation analysis.
+- Full field-by-field D1 normalization.
+
+These items remain separate implementation phases and are not represented as completed functionality.

@@ -1,24 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
+import { useFarm, type FarmSummary } from '../farms/FarmContext'
 import { useAppStore } from '../store/appStore'
 import { apiRequest } from '../services/api'
+import { cloneField, type TaskDataModel } from '../models/taskData'
 import HomePage from './HomePage'
 import CreateFieldPage from './CreateFieldPage'
 import EditFieldPage from './EditFieldPage'
 import GenerateLinesPage from './GenerateLinesPage'
+import PivotTrackPage from './PivotTrackPage'
+import GrainBunkerPage from './GrainBunkerPage'
 import ExportPage from './ExportPage'
 import AdminAccessPanel from '../components/AdminAccessPanel'
 import ProjectFilesPanel from '../components/ProjectFilesPanel'
 
-type WorkspaceTool = 'overview' | 'files' | 'create' | 'edit' | 'generate' | 'export' | 'access'
+type WorkspaceTool =
+  | 'overview'
+  | 'files'
+  | 'create'
+  | 'edit'
+  | 'generate'
+  | 'pivot'
+  | 'bunker'
+  | 'export'
+  | 'access'
 
 type ProjectSummaryRaw = {
   id: string
   name: string
   file_name?: string | null
   fileName?: string | null
-  created_at?: string
-  createdAt?: string
   updated_at?: string
   updatedAt?: string
   file_count?: number
@@ -36,27 +47,34 @@ type ProjectSummary = {
 type ProjectDetail = {
   id: string
   name: string
+  farmId: string | null
   fileName: string | null
-  projectData: unknown
+  projectData: TaskDataModel | null
 }
 
-const ACTIVE_PROJECT_KEY = 'cyberfarm_active_project'
-const CURRENT_TASK_KEY = 'gargha_current_taskdata'
-const CURRENT_NAME_KEY = 'gargha_current_file_name'
+type PendingImport = {
+  file: File
+  data: TaskDataModel
+  mode: 'new-farm' | 'current-farm'
+  farmName: string
+}
 
 const tools: Array<{
   id: WorkspaceTool
   label: string
+  icon: string
   description: string
   adminOnly?: boolean
 }> = [
-  { id: 'overview', label: 'Workspace', description: 'Map and fields' },
-  { id: 'files', label: 'Files', description: 'Cloudflare library' },
-  { id: 'create', label: 'Create', description: 'Field or guidance', adminOnly: true },
-  { id: 'edit', label: 'Edit', description: 'Geometry and names', adminOnly: true },
-  { id: 'generate', label: 'Generate', description: 'Parallel lines', adminOnly: true },
-  { id: 'export', label: 'Export', description: 'Machine formats' },
-  { id: 'access', label: 'Access', description: 'Users and permissions', adminOnly: true },
+  { id: 'overview', label: 'Map', icon: '⌖', description: 'Fields and guidance' },
+  { id: 'files', label: 'Files', icon: '▣', description: 'Farm source files' },
+  { id: 'create', label: 'Create', icon: '+', description: 'Field or guidance', adminOnly: true },
+  { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', adminOnly: true },
+  { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', adminOnly: true },
+  { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Wheel tracks' },
+  { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank' },
+  { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats' },
+  { id: 'access', label: 'Access', icon: '◎', description: 'Users and permissions', adminOnly: true },
 ]
 
 function normalizeProject(project: ProjectSummaryRaw): ProjectSummary {
@@ -69,73 +87,163 @@ function normalizeProject(project: ProjectSummaryRaw): ProjectSummary {
   }
 }
 
-function projectNameFromFile(fileName: string | null) {
-  if (!fileName) return 'Untitled project'
+function nameFromFile(fileName: string | null) {
+  if (!fileName) return 'Farm workspace'
   return fileName.replace(/\.[^.]+$/, '') || fileName
 }
 
-function readableDate(value: string) {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return new Intl.DateTimeFormat(undefined, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date)
+function suggestedFarmName(file: File, task: TaskDataModel) {
+  const sourceName = task.farm?.name?.trim()
+  return sourceName || nameFromFile(file.name)
+}
+
+function scopeTaskToFarm(task: TaskDataModel, farm: FarmSummary): TaskDataModel {
+  return {
+    ...task,
+    farm: { id: farm.id, name: farm.name, clientId: task.client?.id },
+    fields: task.fields.map((field) => ({ ...field, farmId: farm.id })),
+  }
+}
+
+function mergeTaskData(
+  current: TaskDataModel | null,
+  incoming: TaskDataModel,
+  farm: FarmSummary,
+): TaskDataModel {
+  const scoped = scopeTaskToFarm(incoming, farm)
+  if (!current) return scoped
+
+  const names = new Set(current.fields.map((field) => field.name.trim().toLowerCase()))
+  const addedFields = scoped.fields.map((field) => cloneField(field, names))
+
+  return {
+    ...current,
+    farm: { id: farm.id, name: farm.name, clientId: current.client?.id },
+    client: current.client ?? scoped.client,
+    fields: [...current.fields, ...addedFields],
+  }
+}
+
+
+async function sha256File(file: File) {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function formatSaveState(state: 'idle' | 'saving' | 'saved' | 'error') {
+  if (state === 'saving') return 'Saving…'
+  if (state === 'saved') return 'Saved'
+  if (state === 'error') return 'Save failed'
+  return 'Cloud sync'
 }
 
 export default function WorkspacePage() {
   const { user, logout } = useAuth()
   const {
+    farms,
+    activeFarm,
+    loading: loadingFarms,
+    error: farmError,
+    createFarm,
+    switchFarm,
+  } = useFarm()
+  const {
     loadedTaskData,
     currentFileName,
-    importAny,
+    parseAny,
+    loadTaskData,
+    clearTaskData,
     createEmptyMap,
-    saveCurrentTaskData,
     errorMessage,
     setErrorMessage,
+    dataVersion,
   } = useAppStore()
 
   const isAdmin = user?.role === 'admin'
+  const canManage = isAdmin || activeFarm?.role === 'editor'
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const saveTimerRef = useRef<number | null>(null)
+  const projectLoadRef = useRef(0)
+  const suppressFarmReloadRef = useRef<string | null>(null)
+
   const [activeTool, setActiveTool] = useState<WorkspaceTool>('overview')
   const [projects, setProjects] = useState<ProjectSummary[]>([])
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(
-    () => localStorage.getItem(ACTIVE_PROJECT_KEY),
-  )
-  const [loadingProjects, setLoadingProjects] = useState(true)
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [loadingProjects, setLoadingProjects] = useState(false)
   const [busy, setBusy] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [newFarmName, setNewFarmName] = useState('')
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
 
   const activeProject = useMemo(
     () => projects.find((project) => project.id === activeProjectId) ?? null,
     [projects, activeProjectId],
   )
 
-  const loadProjects = async () => {
-    const response = await apiRequest<{ projects: ProjectSummaryRaw[] }>('/api/projects')
+  const loadProjects = async (farmId: string) => {
+    const response = await apiRequest<{ projects: ProjectSummaryRaw[] }>(
+      `/api/projects?farmId=${encodeURIComponent(farmId)}`,
+    )
     const next = response.projects.map(normalizeProject)
     setProjects(next)
     return next
   }
 
+  const openProject = async (projectId: string) => {
+    const requestId = ++projectLoadRef.current
+    setLoadingProjects(true)
+    try {
+      const response = await apiRequest<{ project: ProjectDetail }>(`/api/projects/${projectId}`)
+      if (requestId !== projectLoadRef.current) return
+      if (!response.project.projectData) throw new Error('This farm workspace has no map data.')
+
+      setActiveProjectId(projectId)
+      loadTaskData(response.project.projectData, response.project.fileName)
+      setStatusMessage(null)
+      setSaveState('idle')
+    } catch (error) {
+      if (requestId === projectLoadRef.current) {
+        setStatusMessage(error instanceof Error ? error.message : 'Unable to open farm workspace.')
+        clearTaskData()
+        setActiveProjectId(null)
+      }
+    } finally {
+      if (requestId === projectLoadRef.current) setLoadingProjects(false)
+    }
+  }
+
   useEffect(() => {
+    if (activeFarm && suppressFarmReloadRef.current === activeFarm.id) {
+      suppressFarmReloadRef.current = null
+      return
+    }
+
+    if (!activeFarm) {
+      setProjects([])
+      setActiveProjectId(null)
+      clearTaskData()
+      return
+    }
+
     let cancelled = false
     setLoadingProjects(true)
+    setActiveTool('overview')
+    setActiveProjectId(null)
+    clearTaskData()
 
-    loadProjects()
-      .then((next) => {
+    loadProjects(activeFarm.id)
+      .then(async (next) => {
         if (cancelled) return
-        if (!isAdmin && activeProjectId && !next.some((item) => item.id === activeProjectId)) {
-          localStorage.removeItem(ACTIVE_PROJECT_KEY)
-          localStorage.removeItem(CURRENT_TASK_KEY)
-          localStorage.removeItem(CURRENT_NAME_KEY)
-          setActiveProjectId(null)
-        }
+        if (next[0]) await openProject(next[0].id)
       })
       .catch((error) => {
-        if (!cancelled) setStatusMessage(error instanceof Error ? error.message : 'Unable to load projects.')
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : 'Unable to load farm data.')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingProjects(false)
@@ -143,173 +251,242 @@ export default function WorkspacePage() {
 
     return () => {
       cancelled = true
+      projectLoadRef.current += 1
     }
-  }, [user?.id])
+  }, [activeFarm?.id])
 
+  useEffect(() => {
+    if (!canManage || !activeProjectId || !loadedTaskData || busy) return
 
-  const openProject = async (projectId: string) => {
-    setBusy(true)
-    setStatusMessage('Opening project…')
-    try {
-      const response = await apiRequest<{ project: ProjectDetail }>(`/api/projects/${projectId}`)
-      if (!response.project.projectData) throw new Error('This project does not contain map data.')
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    setSaveState('saving')
 
-      localStorage.setItem(CURRENT_TASK_KEY, JSON.stringify(response.project.projectData))
-      if (response.project.fileName) localStorage.setItem(CURRENT_NAME_KEY, response.project.fileName)
-      else localStorage.removeItem(CURRENT_NAME_KEY)
-      localStorage.setItem(ACTIVE_PROJECT_KEY, projectId)
-      window.location.reload()
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Unable to open project.')
-      setBusy(false)
-    }
-  }
-
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file || !isAdmin) return
-
-    localStorage.removeItem(ACTIVE_PROJECT_KEY)
-    localStorage.removeItem(CURRENT_TASK_KEY)
-    localStorage.removeItem(CURRENT_NAME_KEY)
-    setActiveProjectId(null)
-    setActiveTool('overview')
-    setErrorMessage(null)
-    setBusy(true)
-    setStatusMessage('Reading the imported file…')
-
-    try {
-      await importAny(file)
-      const storedName = localStorage.getItem(CURRENT_NAME_KEY)
-      const storedTask = localStorage.getItem(CURRENT_TASK_KEY)
-      if (storedName !== file.name || !storedTask) {
-        setStatusMessage(null)
-        return
-      }
-      const parsed = JSON.parse(storedTask) as unknown
-
-      setStatusMessage('Uploading file to Cloudflare…')
-      const formData = new FormData()
-      formData.append('file', file)
-      const upload = await apiRequest<{ file: { id: string } }>('/api/files', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const created = await apiRequest<{ id: string }>('/api/projects', {
-        method: 'POST',
+    saveTimerRef.current = window.setTimeout(() => {
+      void apiRequest(`/api/projects/${activeProjectId}`, {
+        method: 'PUT',
         body: JSON.stringify({
-          name: projectNameFromFile(file.name),
-          fileName: file.name,
-          projectData: parsed,
-          fileId: upload.file.id,
+          name: activeFarm?.name ?? activeProject?.name ?? 'Farm workspace',
+          fileName: currentFileName,
+          projectData: loadedTaskData,
         }),
       })
+        .then(() => setSaveState('saved'))
+        .catch((error) => {
+          setSaveState('error')
+          setStatusMessage(error instanceof Error ? error.message : 'Automatic save failed.')
+        })
+    }, 900)
 
-      localStorage.setItem(ACTIVE_PROJECT_KEY, created.id)
-      setActiveProjectId(created.id)
-      await loadProjects()
-      setStatusMessage('Project and source file are stored in Cloudflare.')
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    }
+  }, [dataVersion, activeProjectId, canManage])
+
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !canManage) return
+
+    setBusy(true)
+    setStatusMessage('Reading the imported file…')
+    setErrorMessage(null)
+    try {
+      const data = await parseAny(file)
+      setPendingImport({
+        file,
+        data,
+        mode: activeFarm ? 'current-farm' : 'new-farm',
+        farmName: suggestedFarmName(file, data),
+      })
+      setStatusMessage(null)
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Unable to store the project.')
+      setStatusMessage(error instanceof Error ? error.message : 'Unable to read imported file.')
     } finally {
       setBusy(false)
     }
   }
 
-  const handleNewMap = () => {
-    if (!isAdmin) return
-    createEmptyMap()
-    localStorage.removeItem(ACTIVE_PROJECT_KEY)
-    setActiveProjectId(null)
-    setActiveTool('overview')
-    setStatusMessage('New map created locally. Save it to store it in Cloudflare.')
+  const uploadSourceFile = async (file: File, farmId: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('farmId', farmId)
+    return apiRequest<{ file: { id: string } }>('/api/files', {
+      method: 'POST',
+      body: formData,
+    })
   }
 
-  const handleSave = async () => {
-    if (!isAdmin) return
-    if (!loadedTaskData) {
-      setStatusMessage('There is no project data to save.')
-      return
-    }
+  const commitImport = async () => {
+    if (!pendingImport || !canManage) return
 
-    saveCurrentTaskData()
     setBusy(true)
-    setStatusMessage('Saving to Cloudflare…')
-
+    setStatusMessage('Uploading the source file…')
     try {
-      const payload = {
-        name: activeProject?.name ?? projectNameFromFile(currentFileName),
-        fileName: currentFileName,
-        projectData: loadedTaskData,
+      let targetFarm = activeFarm
+      if (pendingImport.mode === 'new-farm') {
+        const farmName = pendingImport.farmName.trim()
+        if (!farmName) throw new Error('Farm name is required.')
+        targetFarm = await createFarm(farmName)
+        suppressFarmReloadRef.current = targetFarm.id
       }
+      if (!targetFarm) throw new Error('Select or create a farm first.')
 
-      if (activeProjectId) {
-        await apiRequest(`/api/projects/${activeProjectId}`, {
+      const [upload, fileHash] = await Promise.all([
+        uploadSourceFile(pendingImport.file, targetFarm.id),
+        sha256File(pendingImport.file),
+      ])
+      const isCurrentFarm = activeFarm?.id === targetFarm.id
+      const existingProjectId = isCurrentFarm ? activeProjectId : null
+      const nextTask = existingProjectId
+        ? mergeTaskData(loadedTaskData, pendingImport.data, targetFarm)
+        : scopeTaskToFarm(pendingImport.data, targetFarm)
+
+      if (existingProjectId) {
+        await apiRequest(`/api/projects/${existingProjectId}`, {
           method: 'PUT',
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            name: targetFarm.name,
+            fileName: currentFileName ?? pendingImport.file.name,
+            projectData: nextTask,
+            fileId: upload.file.id,
+          }),
         })
+        await apiRequest(`/api/projects/${existingProjectId}/files`, {
+          method: 'POST',
+          body: JSON.stringify({ fileId: upload.file.id }),
+        })
+        loadTaskData(nextTask, currentFileName ?? pendingImport.file.name)
+        setActiveProjectId(existingProjectId)
       } else {
         const created = await apiRequest<{ id: string }>('/api/projects', {
           method: 'POST',
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            farmId: targetFarm.id,
+            name: targetFarm.name,
+            fileName: pendingImport.file.name,
+            projectData: nextTask,
+            fileId: upload.file.id,
+          }),
         })
-        localStorage.setItem(ACTIVE_PROJECT_KEY, created.id)
+        const nextProjects = await loadProjects(targetFarm.id)
+        setProjects(nextProjects)
         setActiveProjectId(created.id)
+        loadTaskData(nextTask, pendingImport.file.name)
       }
 
-      await loadProjects()
-      setStatusMessage('Saved to Cloudflare.')
+      await apiRequest(`/api/farms/${targetFarm.id}/imports`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceFileId: upload.file.id,
+          originalName: pendingImport.file.name,
+          fileHash,
+          importType: pendingImport.file.name.split('.').pop() ?? 'unknown',
+          detectedFields: pendingImport.data.fields.length,
+          importedFields: pendingImport.data.fields.length,
+        }),
+      })
+
+      setPendingImport(null)
+      setActiveTool('overview')
+      setSaveState('saved')
+      setStatusMessage(
+        pendingImport.mode === 'new-farm'
+          ? `Farm “${targetFarm.name}” created.`
+          : `${pendingImport.data.fields.length} field${pendingImport.data.fields.length === 1 ? '' : 's'} added to ${targetFarm.name}.`,
+      )
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Unable to save project.')
+      setStatusMessage(error instanceof Error ? error.message : 'Unable to import farm data.')
     } finally {
       setBusy(false)
     }
   }
 
-  const handleDeleteProject = async (projectId: string) => {
-    if (!isAdmin) return
-    const project = projects.find((item) => item.id === projectId)
-    if (!window.confirm(`Delete “${project?.name ?? 'project'}” from Cloudflare?`)) return
+  const handleCreateFarm = async () => {
+    const name = newFarmName.trim()
+    if (!name || !isAdmin) return
 
     setBusy(true)
     try {
-      await apiRequest(`/api/projects/${projectId}`, { method: 'DELETE' })
-      if (activeProjectId === projectId) {
-        localStorage.removeItem(ACTIVE_PROJECT_KEY)
-        localStorage.removeItem(CURRENT_TASK_KEY)
-        localStorage.removeItem(CURRENT_NAME_KEY)
-        setActiveProjectId(null)
-      }
-      await loadProjects()
-      setStatusMessage('Project deleted.')
+      await createFarm(name)
+      setNewFarmName('')
+      setProfileOpen(false)
+      setStatusMessage(`Farm “${name}” created.`)
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Unable to delete project.')
+      setStatusMessage(error instanceof Error ? error.message : 'Unable to create farm.')
     } finally {
       setBusy(false)
     }
   }
 
-  const visibleTools = tools.filter((tool) => !tool.adminOnly || isAdmin)
-  const canDisplayWorkspace = Boolean(loadedTaskData) && (isAdmin || Boolean(activeProject))
+  const handleSwitchFarm = async (farmId: string) => {
+    if (farmId === activeFarm?.id) {
+      setProfileOpen(false)
+      return
+    }
+
+    setBusy(true)
+    try {
+      await switchFarm(farmId)
+      setProfileOpen(false)
+      setStatusMessage(null)
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Unable to switch farm.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleNewMap = async () => {
+    if (!canManage || !activeFarm) return
+
+    setBusy(true)
+    try {
+      createEmptyMap()
+      const emptyTask: TaskDataModel = {
+        client: null,
+        farm: { id: activeFarm.id, name: activeFarm.name },
+        fields: [],
+      }
+      const created = await apiRequest<{ id: string }>('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          farmId: activeFarm.id,
+          name: activeFarm.name,
+          fileName: 'New Map.xml',
+          projectData: emptyTask,
+        }),
+      })
+      setActiveProjectId(created.id)
+      loadTaskData(emptyTask, 'New Map.xml')
+      await loadProjects(activeFarm.id)
+      setActiveTool('create')
+      setStatusMessage('Empty farm workspace created and connected to cloud storage.')
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Unable to create workspace.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const visibleTools = tools.filter((tool) => !tool.adminOnly || canManage)
+  const canDisplayWorkspace = Boolean(loadedTaskData)
 
   const renderTool = () => {
     if (!canDisplayWorkspace && activeTool !== 'access') {
       return (
-        <section className="empty-workspace-state">
-          <div className="empty-workspace-symbol">◎</div>
-          <span className="section-kicker">No project opened</span>
-          <h2>{isAdmin ? 'Import a file or create a new map' : 'Select a shared project'}</h2>
+        <section className="empty-workspace-state glass-panel">
+          <div className="empty-workspace-symbol">⌖</div>
+          <span className="section-kicker">{activeFarm?.name ?? 'No active farm'}</span>
+          <h2>{activeFarm ? 'Import fields or create an empty map' : 'Create your first farm'}</h2>
           <p>
-            {isAdmin
-              ? 'Source files will be uploaded to Cloudflare R2 and project data will be stored in D1.'
-              : 'Only projects approved by the administrator appear in your project list.'}
+            {activeFarm
+              ? 'All fields, source files and later GeoTIFF or route layers will stay inside this farm.'
+              : 'A farm is the top-level workspace. Data from different farms is never mixed on one map.'}
           </p>
-          {isAdmin && (
+          {canManage && (
             <div className="action-row centered-actions">
-              <button className="primary-btn" onClick={() => fileInputRef.current?.click()}>Import file</button>
-              <button className="ghost-btn" onClick={handleNewMap}>Create map</button>
+              <button className="primary-btn" onClick={() => fileInputRef.current?.click()}>Import fields</button>
+              {activeFarm && <button className="ghost-btn" onClick={() => void handleNewMap()}>Create empty map</button>}
             </div>
           )}
         </section>
@@ -321,8 +498,9 @@ export default function WorkspacePage() {
         return (
           <ProjectFilesPanel
             projectId={activeProjectId}
-            projectName={activeProject?.name ?? projectNameFromFile(currentFileName)}
-            isAdmin={isAdmin}
+            projectName={activeFarm?.name ?? 'Farm files'}
+            farmId={activeFarm?.id ?? null}
+            isAdmin={Boolean(canManage)}
           />
         )
       case 'create':
@@ -331,13 +509,17 @@ export default function WorkspacePage() {
         return <EditFieldPage />
       case 'generate':
         return <GenerateLinesPage />
+      case 'pivot':
+        return <PivotTrackPage />
+      case 'bunker':
+        return <GrainBunkerPage />
       case 'export':
         return <ExportPage />
       case 'access':
         return (
           <AdminAccessPanel
             activeProjectId={activeProjectId}
-            activeProjectName={activeProject?.name ?? projectNameFromFile(currentFileName)}
+            activeProjectName={activeFarm?.name ?? 'Select a farm'}
           />
         )
       default:
@@ -345,87 +527,99 @@ export default function WorkspacePage() {
     }
   }
 
-  return (
-    <div className="workspace-shell">
-      <aside className="workspace-sidebar">
-        <div className="brand-lockup">
-          <div className="brand-mark">CF</div>
-          <div>
-            <strong>CyberFarms</strong>
-            <span>Field workspace</span>
-          </div>
-        </div>
+  if (loadingFarms) {
+    return (
+      <main className="app-loading-screen">
+        <div className="loading-mark">CF</div>
+        <span>Loading farms…</span>
+      </main>
+    )
+  }
 
-        <nav className="workspace-nav" aria-label="Workspace tools">
+  return (
+    <div className="workspace-shell dark-glass-shell">
+      <aside className="tool-rail">
+        <div className="brand-mark rail-brand">CF</div>
+
+        <nav className="tool-rail-nav" aria-label="CyberFarm tools">
           {visibleTools.map((tool) => (
             <button
               key={tool.id}
-              className={`workspace-nav-item ${activeTool === tool.id ? 'active' : ''}`}
+              className={`tool-rail-item ${activeTool === tool.id ? 'active' : ''}`}
+              title={`${tool.label} — ${tool.description}`}
               onClick={() => setActiveTool(tool.id)}
             >
-              <span>{tool.label}</span>
-              <small>{tool.description}</small>
+              <span className="tool-rail-icon">{tool.icon}</span>
+              <small>{tool.label}</small>
             </button>
           ))}
         </nav>
 
-        <div className="project-library-heading">
-          <span>Projects</span>
-          <strong>{projects.length}</strong>
-        </div>
+        <div className="profile-menu-wrap">
+          {profileOpen && (
+            <div className="profile-popover glass-panel">
+              <div className="profile-popover-head">
+                <strong>{user?.name || user?.email}</strong>
+                <span>{isAdmin ? 'Administrator' : activeFarm?.role ?? 'Viewer'}</span>
+              </div>
 
-        <div className="project-library">
-          {loadingProjects ? (
-            <div className="sidebar-empty">Loading…</div>
-          ) : projects.length ? projects.map((project) => (
-            <div className={`project-list-row ${activeProjectId === project.id ? 'active' : ''}`} key={project.id}>
-              <button className="project-list-open" onClick={() => void openProject(project.id)} disabled={busy}>
-                <strong>{project.name}</strong>
-                <span>{readableDate(project.updatedAt)} · {project.fileCount} file{project.fileCount === 1 ? '' : 's'}</span>
-              </button>
+              <div className="farm-menu-label">Active farm</div>
+              <div className="farm-switch-list">
+                {farms.map((farm) => (
+                  <button
+                    key={farm.id}
+                    className={`farm-switch-row ${farm.id === activeFarm?.id ? 'active' : ''}`}
+                    onClick={() => void handleSwitchFarm(farm.id)}
+                    disabled={busy}
+                  >
+                    <span>{farm.name}</span>
+                    <small>{farm.role}</small>
+                  </button>
+                ))}
+              </div>
+
               {isAdmin && (
-                <button
-                  className="project-delete-btn"
-                  title="Delete project"
-                  onClick={() => void handleDeleteProject(project.id)}
-                >
-                  ×
-                </button>
+                <div className="quick-farm-create">
+                  <input
+                    value={newFarmName}
+                    onChange={(event) => setNewFarmName(event.target.value)}
+                    placeholder="New farm name"
+                  />
+                  <button onClick={() => void handleCreateFarm()} disabled={!newFarmName.trim() || busy}>+</button>
+                </div>
               )}
-            </div>
-          )) : (
-            <div className="sidebar-empty">No available projects</div>
-          )}
-        </div>
 
-        <div className="sidebar-profile">
-          <div className="user-avatar">{(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}</div>
-          <div className="sidebar-profile-copy">
-            <strong>{user?.name || user?.email}</strong>
-            <span>{isAdmin ? 'Administrator' : 'Read-only viewer'}</span>
-          </div>
-          <button className="profile-logout" onClick={() => void logout()} title="Sign out">↗</button>
+              <button className="profile-signout" onClick={() => void logout()}>Sign out</button>
+            </div>
+          )}
+
+          <button
+            className={`rail-profile ${profileOpen ? 'active' : ''}`}
+            onClick={() => setProfileOpen((current) => !current)}
+            title="Account and farm switcher"
+          >
+            {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
+          </button>
         </div>
       </aside>
 
       <main className="workspace-main">
-        <header className="workspace-topbar">
+        <header className="workspace-topbar glass-panel">
           <div className="workspace-title-wrap">
-            <span className="eyebrow">{activeProject ? 'Cloudflare project' : 'Local workspace'}</span>
-            <h1>{activeProject?.name ?? projectNameFromFile(currentFileName)}</h1>
+            <span className="eyebrow">Active farm</span>
+            <h1>{activeFarm?.name ?? 'No farm selected'}</h1>
             <div className="workspace-meta">
               <span>{loadedTaskData?.fields.length ?? 0} fields</span>
-              <span>{currentFileName ?? 'No source file'}</span>
-              <span className={`role-chip ${isAdmin ? 'admin' : ''}`}>{isAdmin ? 'Admin' : 'View only'}</span>
+              <span>{projects.reduce((sum, project) => sum + project.fileCount, 0)} source files</span>
+              <span className={`save-chip ${saveState}`}>{formatSaveState(saveState)}</span>
             </div>
           </div>
 
-          {isAdmin && (
+          {canManage && (
             <div className="workspace-actions">
-              <button className="ghost-btn" onClick={handleNewMap}>New map</button>
-              <button className="secondary-btn" onClick={() => fileInputRef.current?.click()}>Import</button>
-              <button className="primary-btn" onClick={() => void handleSave()} disabled={busy || !loadedTaskData}>
-                {busy ? 'Working…' : 'Save to cloud'}
+              {activeFarm && <button className="ghost-btn" onClick={() => void handleNewMap()} disabled={busy}>Empty map</button>}
+              <button className="primary-btn" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                {busy ? 'Working…' : 'Import'}
               </button>
             </div>
           )}
@@ -435,13 +629,13 @@ export default function WorkspacePage() {
             type="file"
             accept=".xml,.isoxml,.kml,.kmz,.zip,.geojson,.json,.shp,.ini"
             hidden
-            onChange={handleImport}
+            onChange={handleFileSelected}
           />
         </header>
 
-        {(statusMessage || errorMessage) && (
-          <div className="workspace-notice">
-            <span>{errorMessage ?? statusMessage}</span>
+        {(statusMessage || errorMessage || farmError) && (
+          <div className="workspace-notice glass-panel">
+            <span>{errorMessage ?? farmError ?? statusMessage}</span>
             <button
               onClick={() => {
                 setStatusMessage(null)
@@ -453,14 +647,79 @@ export default function WorkspacePage() {
           </div>
         )}
 
-        {!isAdmin && activeProject && (
-          <div className="viewer-banner">
-            This project is shared with read-only access. Editing and uploads are disabled.
+        {!canManage && activeFarm && (
+          <div className="viewer-banner glass-panel">
+            Read-only access to {activeFarm.name}. Editing and uploads are disabled.
           </div>
         )}
 
-        <div className="workspace-content">{renderTool()}</div>
+        <div className="workspace-content">
+          {loadingProjects ? (
+            <section className="empty-workspace-state glass-panel">
+              <div className="empty-workspace-symbol">···</div>
+              <h2>Loading farm workspace</h2>
+            </section>
+          ) : renderTool()}
+        </div>
       </main>
+
+      {pendingImport && (
+        <div className="modal-backdrop">
+          <section className="import-modal glass-panel">
+            <span className="section-kicker">Import destination</span>
+            <h2>{pendingImport.file.name}</h2>
+            <p>
+              Detected {pendingImport.data.fields.length} field{pendingImport.data.fields.length === 1 ? '' : 's'}.
+              Choose whether this file is a separate farm or belongs to the active farm.
+            </p>
+
+            <label className={`import-mode-card ${pendingImport.mode === 'new-farm' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                checked={pendingImport.mode === 'new-farm'}
+                onChange={() => setPendingImport((current) => current ? { ...current, mode: 'new-farm' } : current)}
+              />
+              <span>
+                <strong>Create a new farm</strong>
+                <small>This file becomes a separate farm workspace.</small>
+              </span>
+            </label>
+
+            {pendingImport.mode === 'new-farm' && (
+              <input
+                className="text-input"
+                value={pendingImport.farmName}
+                onChange={(event) => setPendingImport((current) => current ? { ...current, farmName: event.target.value } : current)}
+                placeholder="Farm name"
+              />
+            )}
+
+            <label className={`import-mode-card ${pendingImport.mode === 'current-farm' ? 'active' : ''} ${!activeFarm ? 'disabled' : ''}`}>
+              <input
+                type="radio"
+                checked={pendingImport.mode === 'current-farm'}
+                disabled={!activeFarm}
+                onChange={() => setPendingImport((current) => current ? { ...current, mode: 'current-farm' } : current)}
+              />
+              <span>
+                <strong>Add to {activeFarm?.name ?? 'current farm'}</strong>
+                <small>Merge the detected fields into the active farm.</small>
+              </span>
+            </label>
+
+            <div className="modal-actions">
+              <button className="ghost-btn" onClick={() => setPendingImport(null)} disabled={busy}>Cancel</button>
+              <button
+                className="primary-btn"
+                onClick={() => void commitImport()}
+                disabled={busy || (pendingImport.mode === 'new-farm' && !pendingImport.farmName.trim())}
+              >
+                {busy ? 'Importing…' : 'Continue'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }

@@ -19,7 +19,7 @@ import type {
   EditorMode,
   GuidanceLine,
 } from '../models/taskData'
-import { cloneTaskData, uid } from '../models/taskData'
+import { uid } from '../models/taskData'
 import { exportTaskData } from '../utils/taskDataExportService'
 import { parseTaskDataXmlFile } from '../utils/taskDataXmlParser'
 
@@ -84,7 +84,11 @@ type AppStoreValue = {
   generationResult: GenerationResult | null
   dataVersion: number
 
-  importAny: (file: File) => Promise<void>
+  parseAny: (file: File) => Promise<TaskDataModel>
+  importAny: (file: File) => Promise<TaskDataModel>
+  loadTaskData: (task: TaskDataModel, fileName: string | null) => void
+  clearTaskData: () => void
+  updateTaskData: (updater: (task: TaskDataModel) => TaskDataModel) => void
   setErrorMessage: (value: string | null) => void
   setSelectedFieldId: (value: string | null) => void
   setEditorMode: (value: EditorMode) => void
@@ -132,41 +136,24 @@ type AppStoreValue = {
 const AppStoreContext = createContext<AppStoreValue | null>(null)
 
 const HISTORY_KEY = 'gargha_import_history'
-const CURRENT_KEY = 'gargha_current_taskdata'
-const CURRENT_NAME_KEY = 'gargha_current_file_name'
+const LEGACY_TASK_KEYS = [
+  HISTORY_KEY,
+  'gargha_current_taskdata',
+  'gargha_current_file_name',
+  'cyberfarm_active_project',
+]
+
+function clearLegacyTaskCache() {
+  for (const key of LEGACY_TASK_KEYS) localStorage.removeItem(key)
+}
 
 function loadHistory(): ImportedFileRecord[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
+  clearLegacyTaskCache()
+  return []
 }
 
-function saveHistory(history: ImportedFileRecord[]) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
-}
-
-function saveCurrentTask(task: TaskDataModel | null, fileName: string | null) {
-  if (task) localStorage.setItem(CURRENT_KEY, JSON.stringify(task))
-  else localStorage.removeItem(CURRENT_KEY)
-
-  if (fileName) localStorage.setItem(CURRENT_NAME_KEY, fileName)
-  else localStorage.removeItem(CURRENT_NAME_KEY)
-}
-
-function loadCurrentTask(): { task: TaskDataModel | null; fileName: string | null } {
-  try {
-    const rawTask = localStorage.getItem(CURRENT_KEY)
-    const rawName = localStorage.getItem(CURRENT_NAME_KEY)
-    return {
-      task: rawTask ? JSON.parse(rawTask) : null,
-      fileName: rawName ?? null,
-    }
-  } catch {
-    return { task: null, fileName: null }
-  }
+function saveHistory(_history: ImportedFileRecord[]) {
+  // Import history now belongs to D1. Full geometry is never serialized here.
 }
 
 function emptyDraft(): DraftCreateState {
@@ -190,12 +177,11 @@ function upsertTask(
 ) {
   setLoadedTaskData(task)
   setCurrentFileName(currentName)
-  saveCurrentTask(task, currentName)
 
   if (task && currentName && setImportHistory && existingHistory) {
     const nextHistory = existingHistory.map((record) =>
       record.originalFileName === currentName
-        ? { ...record, snapshot: cloneTaskData(task) }
+        ? { ...record, importDate: new Date().toISOString() }
         : record,
     )
     setImportHistory(nextHistory)
@@ -644,13 +630,12 @@ function totalMaterialSummary(
 }
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
-  const loaded = loadCurrentTask()
   const [importHistory, setImportHistory] = useState<ImportedFileRecord[]>(loadHistory)
-  const [loadedTaskData, setLoadedTaskData] = useState<TaskDataModel | null>(loaded.task)
-  const [currentFileName, setCurrentFileName] = useState<string | null>(loaded.fileName)
+  const [loadedTaskData, setLoadedTaskData] = useState<TaskDataModel | null>(null)
+  const [currentFileName, setCurrentFileName] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(
-    loaded.task?.fields[0]?.id ?? null,
+    null,
   )
   const [editorMode, setEditorMode] = useState<EditorMode>('view')
   const [draftCreate, setDraftCreate] = useState<DraftCreateState>(emptyDraft)
@@ -671,29 +656,58 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setDataVersion((prev) => prev + 1)
   }
 
-  const importAny = async (file: File) => {
-    try {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-      let parsed: TaskDataModel
+  const parseAny = async (file: File): Promise<TaskDataModel> => {
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
 
-      if (ext === 'xml' || ext === 'isoxml') {
-        try {
-          parsed = await parseTaskDataXmlFile(file)
-        } catch {
-          const result = await parseImportedFile(file)
-          parsed = importResultToTaskData(result, file.name)
-        }
-      } else {
+    if (ext === 'xml' || ext === 'isoxml') {
+      try {
+        return await parseTaskDataXmlFile(file)
+      } catch {
         const result = await parseImportedFile(file)
-        parsed = importResultToTaskData(result, file.name)
+        return importResultToTaskData(result, file.name)
       }
+    }
 
+    const result = await parseImportedFile(file)
+    return importResultToTaskData(result, file.name)
+  }
+
+  const loadTaskData = (task: TaskDataModel, fileName: string | null) => {
+    setLoadedTaskData(task)
+    setCurrentFileName(fileName)
+    setSelectedFieldId(task.fields[0]?.id ?? null)
+    setEditorMode('view')
+    setDraftCreate(emptyDraft())
+    setGenerationResult(null)
+    setErrorMessage(null)
+    setDataVersion((prev) => prev + 1)
+  }
+
+  const clearTaskData = () => {
+    setLoadedTaskData(null)
+    setCurrentFileName(null)
+    setSelectedFieldId(null)
+    setEditorMode('view')
+    setDraftCreate(emptyDraft())
+    setGenerationResult(null)
+    setErrorMessage(null)
+    setDataVersion((prev) => prev + 1)
+  }
+
+  const updateTaskData = (updater: (task: TaskDataModel) => TaskDataModel) => {
+    if (!loadedTaskData) return
+    persistTask(updater(loadedTaskData), currentFileName)
+  }
+
+
+  const importAny = async (file: File): Promise<TaskDataModel> => {
+    try {
+      const parsed = await parseAny(file)
       const record: ImportedFileRecord = {
         id: uid(),
         originalFileName: file.name,
         cachedFileName: file.name,
         importDate: new Date().toISOString(),
-        snapshot: cloneTaskData(parsed),
       }
 
       const nextHistory = [
@@ -703,30 +717,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       setImportHistory(nextHistory)
       saveHistory(nextHistory)
-      setLoadedTaskData(parsed)
-      setCurrentFileName(file.name)
-      saveCurrentTask(parsed, file.name)
-      setSelectedFieldId(parsed.fields[0]?.id ?? null)
-      setEditorMode('view')
-      setDraftCreate(emptyDraft())
-      setGenerationResult(null)
-      setErrorMessage(null)
-      setDataVersion((prev) => prev + 1)
+      loadTaskData(parsed, file.name)
+      return parsed
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Import failed')
+      const message = error instanceof Error ? error.message : 'Import failed'
+      setErrorMessage(message)
+      throw error instanceof Error ? error : new Error(message)
     }
   }
 
-  const openHistoryItem = (recordId: string) => {
-    const found = importHistory.find((record) => record.id === recordId)
-    if (!found?.snapshot) return
-
-    setLoadedTaskData(cloneTaskData(found.snapshot))
-    setCurrentFileName(found.originalFileName)
-    saveCurrentTask(found.snapshot, found.originalFileName)
-    setSelectedFieldId(found.snapshot.fields[0]?.id ?? null)
-    setErrorMessage(null)
-    setDataVersion((prev) => prev + 1)
+  const openHistoryItem = (_recordId: string) => {
+    setErrorMessage('Import history is stored on the server. Open the farm source file instead.')
   }
 
   const deleteHistoryItem = (recordId: string) => {
@@ -740,7 +741,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     const next: TaskDataModel = { client: null, farm: null, fields: [] }
     setLoadedTaskData(next)
     setCurrentFileName('New Map.xml')
-    saveCurrentTask(next, 'New Map.xml')
     setSelectedFieldId(null)
     setDataVersion((prev) => prev + 1)
   }
@@ -1273,7 +1273,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       draftCreate,
       generationResult,
       dataVersion,
+      parseAny,
       importAny,
+      loadTaskData,
+      clearTaskData,
+      updateTaskData,
       setErrorMessage,
       setSelectedFieldId,
       setEditorMode,

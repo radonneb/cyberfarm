@@ -187,11 +187,20 @@ export async function canViewProject(user: AuthUser, projectId: string, env: Env
 
   const row = await env.DB
     .prepare(`
-      SELECT project_id
-      FROM project_permissions
-      WHERE project_id = ? AND user_id = ? AND can_view = 1
+      SELECT p.id
+      FROM projects p
+      LEFT JOIN project_permissions pp
+        ON pp.project_id = p.id
+       AND pp.user_id = ?
+       AND pp.can_view = 1
+      LEFT JOIN farm_memberships fm
+        ON fm.farm_id = p.farm_id
+       AND fm.user_id = ?
+       AND fm.active = 1
+      WHERE p.id = ?
+        AND (pp.project_id IS NOT NULL OR fm.user_id IS NOT NULL)
     `)
-    .bind(projectId, user.id)
+    .bind(user.id, user.id, projectId)
     .first()
 
   return Boolean(row)
