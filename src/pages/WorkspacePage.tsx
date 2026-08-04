@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { useFarm, type FarmSummary } from '../farms/FarmContext'
 import { useAppStore } from '../store/appStore'
@@ -8,11 +8,12 @@ import HomePage from './HomePage'
 import CreateFieldPage from './CreateFieldPage'
 import EditFieldPage from './EditFieldPage'
 import GenerateLinesPage from './GenerateLinesPage'
-import PivotTrackPage from './PivotTrackPage'
-import GrainBunkerPage from './GrainBunkerPage'
 import ExportPage from './ExportPage'
 import AdminAccessPanel from '../components/AdminAccessPanel'
 import ProjectFilesPanel from '../components/ProjectFilesPanel'
+
+const PivotTrackPage = lazy(() => import('./PivotTrackPage'))
+const GrainBunkerPage = lazy(() => import('./GrainBunkerPage'))
 
 type WorkspaceTool =
   | 'overview'
@@ -319,8 +320,9 @@ export default function WorkspacePage() {
   const commitImport = async () => {
     if (!pendingImport || !canManage) return
 
+    let uploadedFileId: string | null = null
     setBusy(true)
-    setStatusMessage('Uploading the source file…')
+    setStatusMessage('Checking the imported file…')
     try {
       let targetFarm = activeFarm
       if (pendingImport.mode === 'new-farm') {
@@ -331,10 +333,28 @@ export default function WorkspacePage() {
       }
       if (!targetFarm) throw new Error('Select or create a farm first.')
 
-      const [upload, fileHash] = await Promise.all([
-        uploadSourceFile(pendingImport.file, targetFarm.id),
-        sha256File(pendingImport.file),
-      ])
+      const fileHash = await sha256File(pendingImport.file)
+      const duplicateCheck = await apiRequest<{
+        duplicate: boolean
+        import: { originalName: string; importedFields: number; completedAt: string } | null
+      }>(
+        `/api/farms/${targetFarm.id}/imports?fileHash=${encodeURIComponent(fileHash)}`,
+      )
+
+      if (duplicateCheck.duplicate) {
+        const importedAt = duplicateCheck.import?.completedAt
+          ? new Date(duplicateCheck.import.completedAt).toLocaleString('en-GB')
+          : 'an earlier date'
+        setPendingImport(null)
+        setStatusMessage(
+          `This file was already imported into ${targetFarm.name} on ${importedAt}. No duplicate fields were added.`,
+        )
+        return
+      }
+
+      setStatusMessage('Uploading the source file…')
+      const upload = await uploadSourceFile(pendingImport.file, targetFarm.id)
+      uploadedFileId = upload.file.id
       const isCurrentFarm = activeFarm?.id === targetFarm.id
       const existingProjectId = isCurrentFarm ? activeProjectId : null
       const nextTask = existingProjectId
@@ -395,6 +415,9 @@ export default function WorkspacePage() {
           : `${pendingImport.data.fields.length} field${pendingImport.data.fields.length === 1 ? '' : 's'} added to ${targetFarm.name}.`,
       )
     } catch (error) {
+      if (uploadedFileId) {
+        await apiRequest(`/api/files/${uploadedFileId}`, { method: 'DELETE' }).catch(() => undefined)
+      }
       setStatusMessage(error instanceof Error ? error.message : 'Unable to import farm data.')
     } finally {
       setBusy(false)
@@ -510,9 +533,17 @@ export default function WorkspacePage() {
       case 'generate':
         return <GenerateLinesPage />
       case 'pivot':
-        return <PivotTrackPage />
+        return (
+          <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Pivot Track…</h2></section>}>
+            <PivotTrackPage />
+          </Suspense>
+        )
       case 'bunker':
-        return <GrainBunkerPage />
+        return (
+          <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Grain Bunker…</h2></section>}>
+            <GrainBunkerPage />
+          </Suspense>
+        )
       case 'export':
         return <ExportPage />
       case 'access':
