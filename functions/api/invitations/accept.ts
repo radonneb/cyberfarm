@@ -56,6 +56,29 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return json({ ok: false, error: 'This invitation has no accessible zones.' }, 400)
     }
 
+    const farmResult = await env.DB
+      .prepare('SELECT id FROM farms WHERE archived = 0 ORDER BY created_at ASC')
+      .all<Record<string, unknown>>()
+    const farmIds = (farmResult.results ?? []).map((farm) => String(farm.id))
+    if (!farmIds.includes(farmId)) farmIds.push(farmId)
+
+    const membershipStatements = farmIds.map((accessibleFarmId) =>
+      env.DB
+        .prepare(`
+          INSERT INTO farm_memberships (
+            farm_id, user_id, role, active, created_at, updated_at
+          ) VALUES (?, ?, ?, 1, ?, ?)
+          ON CONFLICT(farm_id, user_id) DO UPDATE SET
+            role = excluded.role,
+            active = 1,
+            updated_at = excluded.updated_at
+        `)
+        .bind(accessibleFarmId, userId, role, now, now),
+    )
+    const permissionStatements = farmIds.flatMap((accessibleFarmId) =>
+      farmPermissionStatements(env, accessibleFarmId, userId, role, zones, now),
+    )
+
     await env.DB.batch([
       env.DB
         .prepare(`
@@ -64,13 +87,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           ) VALUES (?, ?, ?, ?, 'viewer', 1, ?, ?)
         `)
         .bind(userId, email, String(invitation.name), passwordHash, now, now),
-      env.DB
-        .prepare(`
-          INSERT INTO farm_memberships (
-            farm_id, user_id, role, active, created_at, updated_at
-          ) VALUES (?, ?, ?, 1, ?, ?)
-        `)
-        .bind(farmId, userId, role, now, now),
+      ...membershipStatements,
       env.DB
         .prepare(`
           INSERT INTO user_preferences (user_id, active_farm_id, updated_at)
@@ -80,7 +97,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             updated_at = excluded.updated_at
         `)
         .bind(userId, farmId, now),
-      ...farmPermissionStatements(env, farmId, userId, role, zones, now),
+      ...permissionStatements,
       env.DB
         .prepare(`
           UPDATE access_invitations

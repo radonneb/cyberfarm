@@ -6,6 +6,8 @@ import {
   calculatePlanting,
   formatCount,
   formatDecimal,
+  seedSpacingForTargetRate,
+  type PlantingRateUnit,
 } from '../utils/plantingCalculations'
 
 type LocalPoint = { x: number; y: number }
@@ -18,14 +20,15 @@ type CropPreset = {
   grainsPerUnit: number
   sampleCount: number
   sampleWeightGrams: number
+  thousandSeedWeightGrams: number
 }
 
 const cropPresets: CropPreset[] = [
-  { name: 'Corn', unitsLabel: 'Ears per plant', grainsLabel: 'Grains per ear', unitsPerPlant: 1, grainsPerUnit: 500, sampleCount: 100, sampleWeightGrams: 32 },
-  { name: 'Wheat', unitsLabel: 'Heads per plant', grainsLabel: 'Grains per head', unitsPerPlant: 3, grainsPerUnit: 32, sampleCount: 100, sampleWeightGrams: 4.8 },
-  { name: 'Barley', unitsLabel: 'Heads per plant', grainsLabel: 'Grains per head', unitsPerPlant: 3, grainsPerUnit: 25, sampleCount: 100, sampleWeightGrams: 4.6 },
-  { name: 'Sunflower', unitsLabel: 'Heads per plant', grainsLabel: 'Seeds per head', unitsPerPlant: 1, grainsPerUnit: 800, sampleCount: 100, sampleWeightGrams: 6 },
-  { name: 'Soybean', unitsLabel: 'Pods per plant', grainsLabel: 'Seeds per pod', unitsPerPlant: 35, grainsPerUnit: 2.5, sampleCount: 100, sampleWeightGrams: 18 },
+  { name: 'Corn', unitsLabel: 'Ears per plant', grainsLabel: 'Grains per ear', unitsPerPlant: 1, grainsPerUnit: 500, sampleCount: 100, sampleWeightGrams: 32, thousandSeedWeightGrams: 320 },
+  { name: 'Wheat', unitsLabel: 'Heads per plant', grainsLabel: 'Grains per head', unitsPerPlant: 3, grainsPerUnit: 32, sampleCount: 100, sampleWeightGrams: 4.8, thousandSeedWeightGrams: 48 },
+  { name: 'Barley', unitsLabel: 'Heads per plant', grainsLabel: 'Grains per head', unitsPerPlant: 3, grainsPerUnit: 25, sampleCount: 100, sampleWeightGrams: 4.6, thousandSeedWeightGrams: 46 },
+  { name: 'Sunflower', unitsLabel: 'Heads per plant', grainsLabel: 'Seeds per head', unitsPerPlant: 1, grainsPerUnit: 800, sampleCount: 100, sampleWeightGrams: 6, thousandSeedWeightGrams: 60 },
+  { name: 'Soybean', unitsLabel: 'Pods per plant', grainsLabel: 'Seeds per pod', unitsPerPlant: 35, grainsPerUnit: 2.5, sampleCount: 100, sampleWeightGrams: 18, thousandSeedWeightGrams: 180 },
 ]
 
 function clampPositive(value: number, fallback: number) {
@@ -372,11 +375,13 @@ function InputField({
   value,
   onChange,
   step,
+  disabled,
 }: {
   label: string
   value: number
   onChange: (value: number) => void
   step?: string
+  disabled?: boolean
 }) {
   return (
     <label className="planting-input-field">
@@ -387,6 +392,7 @@ function InputField({
         min="0"
         step={step ?? '1'}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(numberFromInput(event.target.value, 0.01))}
       />
     </label>
@@ -421,23 +427,36 @@ export default function PlantingPage() {
   const [grainsPerUnit, setGrainsPerUnit] = useState(500)
   const [weightSampleCount, setWeightSampleCount] = useState(100)
   const [weightSampleGrams, setWeightSampleGrams] = useState(32)
+  const [targetRateEnabled, setTargetRateEnabled] = useState(false)
+  const [targetRate, setTargetRate] = useState(85)
+  const [targetRateUnit, setTargetRateUnit] = useState<PlantingRateUnit>('TK/ha')
+  const [thousandSeedWeightGrams, setThousandSeedWeightGrams] = useState(320)
   const [pdfBusy, setPdfBusy] = useState(false)
 
   const cropPreset = cropPresets.find((preset) => preset.name === crop) ?? cropPresets[0]
   const areaSqMeters = useMemo(() => fieldAreaSqMeters(selectedField), [selectedField])
+  const adjustedSeedSpacingCm = useMemo(() => seedSpacingForTargetRate({
+    targetRate,
+    unit: targetRateUnit,
+    rowSpacingMeters: workingWidthMeters / Math.max(1, coulterCount),
+    thousandSeedWeightGrams,
+  }), [targetRate, targetRateUnit, workingWidthMeters, coulterCount, thousandSeedWeightGrams])
+  const effectiveSeedSpacingCm = targetRateEnabled && adjustedSeedSpacingCm > 0
+    ? adjustedSeedSpacingCm
+    : seedSpacingCm
   const metrics = useMemo(
     () => calculatePlanting({
       areaSqMeters,
       workingWidthMeters,
       coulterCount,
-      seedSpacingCm,
+      seedSpacingCm: effectiveSeedSpacingCm,
       yieldEnabled,
       yieldUnitsPerPlant,
       grainsPerUnit,
       weightSampleCount,
       weightSampleGrams,
     }),
-    [areaSqMeters, workingWidthMeters, coulterCount, seedSpacingCm, yieldEnabled, yieldUnitsPerPlant, grainsPerUnit, weightSampleCount, weightSampleGrams],
+    [areaSqMeters, workingWidthMeters, coulterCount, effectiveSeedSpacingCm, yieldEnabled, yieldUnitsPerPlant, grainsPerUnit, weightSampleCount, weightSampleGrams],
   )
 
   useEffect(() => {
@@ -464,6 +483,10 @@ export default function PlantingPage() {
         setGrainsPerUnit(stored.grainsPerUnit)
         setWeightSampleCount(stored.weightSampleCount)
         setWeightSampleGrams(stored.weightSampleGrams)
+        setTargetRateEnabled(stored.targetRateEnabled ?? false)
+        setTargetRate(stored.targetRate ?? 85)
+        setTargetRateUnit(stored.targetRateUnit ?? 'TK/ha')
+        setThousandSeedWeightGrams(stored.thousandSeedWeightGrams ?? 320)
       } else {
         const defaults = cropPresets[0]
         setWorkingWidthMeters(6)
@@ -475,6 +498,10 @@ export default function PlantingPage() {
         setGrainsPerUnit(defaults.grainsPerUnit)
         setWeightSampleCount(defaults.sampleCount)
         setWeightSampleGrams(defaults.sampleWeightGrams)
+        setTargetRateEnabled(false)
+        setTargetRate(85)
+        setTargetRateUnit('TK/ha')
+        setThousandSeedWeightGrams(defaults.thousandSeedWeightGrams)
       }
       loadingPlanRef.current = false
     })
@@ -492,13 +519,17 @@ export default function PlantingPage() {
         operation: 'seeding',
         workingWidthMeters,
         coulterCount,
-        seedSpacingCm,
+        seedSpacingCm: effectiveSeedSpacingCm,
         crop,
         yieldEnabled,
         yieldUnitsPerPlant,
         grainsPerUnit,
         weightSampleCount,
         weightSampleGrams,
+        targetRateEnabled,
+        targetRate,
+        targetRateUnit,
+        thousandSeedWeightGrams,
       }
       updateTaskDataRef.current((task) => ({
         ...task,
@@ -514,7 +545,7 @@ export default function PlantingPage() {
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     }
-  }, [taskLoaded, selectedFieldKey, workingWidthMeters, coulterCount, seedSpacingCm, crop, yieldEnabled, yieldUnitsPerPlant, grainsPerUnit, weightSampleCount, weightSampleGrams])
+  }, [taskLoaded, selectedFieldKey, workingWidthMeters, coulterCount, effectiveSeedSpacingCm, crop, yieldEnabled, yieldUnitsPerPlant, grainsPerUnit, weightSampleCount, weightSampleGrams, targetRateEnabled, targetRate, targetRateUnit, thousandSeedWeightGrams])
 
   useEffect(() => {
     const host = canvasWrapRef.current
@@ -531,10 +562,10 @@ export default function PlantingPage() {
       selectedField,
       workingWidthMeters,
       coulterCount,
-      seedSpacingCm,
+      effectiveSeedSpacingCm,
       metrics,
     )
-  }, [selectedField, workingWidthMeters, coulterCount, seedSpacingCm, metrics, sizeVersion])
+  }, [selectedField, workingWidthMeters, coulterCount, effectiveSeedSpacingCm, metrics, sizeVersion])
 
   const changeCrop = (nextCrop: string) => {
     const preset = cropPresets.find((item) => item.name === nextCrop) ?? cropPresets[0]
@@ -543,6 +574,7 @@ export default function PlantingPage() {
     setGrainsPerUnit(preset.grainsPerUnit)
     setWeightSampleCount(preset.sampleCount)
     setWeightSampleGrams(preset.sampleWeightGrams)
+    setThousandSeedWeightGrams(preset.thousandSeedWeightGrams)
   }
 
   const exportPdf = async () => {
@@ -598,7 +630,10 @@ export default function PlantingPage() {
       row('Working width', `${formatDecimal(workingWidthMeters)} m`)
       row('Coulters / rows', formatCount(coulterCount))
       row('Row spacing', `${formatDecimal(metrics.rowSpacingMeters, 3)} m`)
-      row('Seed spacing', `${formatDecimal(seedSpacingCm, 1)} cm`)
+      row('Seed spacing', `${formatDecimal(effectiveSeedSpacingCm, 1)} cm`)
+      if (targetRateEnabled) {
+        row('Target seed rate', `${formatDecimal(targetRate, 1)} ${targetRateUnit}`)
+      }
       heading('Planting positions')
       row('Per square metre', formatCount(metrics.plantsPerSqMeter), true)
       row('Per hectare', formatCount(metrics.plantsPerHectare), true)
@@ -647,10 +682,40 @@ export default function PlantingPage() {
           <option value="seeding">Seeding</option>
         </select>
 
+        <label className="yield-toggle planting-rate-toggle">
+          <input type="checkbox" checked={targetRateEnabled} onChange={(event) => setTargetRateEnabled(event.target.checked)} />
+          <span>
+            <strong>Fit spacing to target seed rate</strong>
+            <small>Seed spacing updates from the selected TK/ha or kg/ha rate</small>
+          </span>
+        </label>
+
+        {targetRateEnabled && (
+          <div className="planting-rate-settings">
+            <div className="planting-input-grid">
+              <InputField label={`Target rate, ${targetRateUnit}`} value={targetRate} onChange={setTargetRate} step="0.1" />
+              <label className="planting-input-field">
+                <span>Rate unit</span>
+                <select className="text-input compact-input" value={targetRateUnit} onChange={(event) => setTargetRateUnit(event.target.value === 'kg/ha' ? 'kg/ha' : 'TK/ha')}>
+                  <option value="TK/ha">TK/ha</option>
+                  <option value="kg/ha">kg/ha</option>
+                </select>
+              </label>
+              {targetRateUnit === 'kg/ha' && (
+                <InputField label="1,000 seed weight, g" value={thousandSeedWeightGrams} onChange={setThousandSeedWeightGrams} step="0.1" />
+              )}
+              <div className="planting-derived-field">
+                <span>Adjusted spacing</span>
+                <strong>{formatDecimal(effectiveSeedSpacingCm, 2)} cm</strong>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="planting-input-grid">
           <InputField label="Working width, m" value={workingWidthMeters} onChange={setWorkingWidthMeters} step="0.1" />
           <InputField label="Coulters / rows" value={coulterCount} onChange={(value) => setCoulterCount(Math.max(1, Math.round(value)))} />
-          <InputField label="Seed spacing, cm" value={seedSpacingCm} onChange={setSeedSpacingCm} step="0.1" />
+          <InputField label="Seed spacing, cm" value={effectiveSeedSpacingCm} onChange={setSeedSpacingCm} step="0.1" disabled={targetRateEnabled} />
           <div className="planting-derived-field">
             <span>Row spacing</span>
             <strong>{formatDecimal(metrics.rowSpacingMeters, 3)} m</strong>
@@ -712,7 +777,7 @@ export default function PlantingPage() {
 
         <div className="planting-formula-card">
           <span>Density formula</span>
-          <code>1 ÷ ({formatDecimal(metrics.rowSpacingMeters, 3)} m × {formatDecimal(seedSpacingCm / 100, 3)} m)</code>
+          <code>1 ÷ ({formatDecimal(metrics.rowSpacingMeters, 3)} m × {formatDecimal(effectiveSeedSpacingCm / 100, 3)} m)</code>
           <small>{formatDecimal(metrics.seedsPerRowMeter, 2)} seeds per metre in each row</small>
         </div>
 

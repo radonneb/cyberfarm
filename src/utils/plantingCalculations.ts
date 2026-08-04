@@ -22,8 +22,34 @@ export type PlantingCalculationResult = {
   yieldTonsInField: number | null
 }
 
+export type PlantingRateUnit = 'TK/ha' | 'kg/ha'
+
 function finitePositive(value: number) {
   return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+export function seedSpacingForTargetRate({
+  targetRate,
+  unit,
+  rowSpacingMeters,
+  thousandSeedWeightGrams,
+}: {
+  targetRate: number
+  unit: PlantingRateUnit
+  rowSpacingMeters: number
+  thousandSeedWeightGrams: number
+}) {
+  const safeRate = finitePositive(targetRate)
+  const safeRowSpacing = finitePositive(rowSpacingMeters)
+  if (!safeRate || !safeRowSpacing) return 0
+
+  const seedsPerHectare = unit === 'TK/ha'
+    ? safeRate * 1000
+    : safeRate * 1_000_000 / finitePositive(thousandSeedWeightGrams)
+  if (!Number.isFinite(seedsPerHectare) || seedsPerHectare <= 0) return 0
+
+  const plantsPerSqMeter = seedsPerHectare / 10_000
+  return 100 / (plantsPerSqMeter * safeRowSpacing)
 }
 
 export function calculatePlanting(

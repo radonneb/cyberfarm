@@ -559,6 +559,9 @@ export default function PivotTrackPage() {
   const [centerOffsetY, setCenterOffsetY] = useState(0)
   const [wheels, setWheels] = useState<PivotTrackWheelConfig[]>(() => createWheels(8, 0.45))
   const [zoom, setZoom] = useState(1)
+  const [viewPanX, setViewPanX] = useState(0)
+  const [viewPanY, setViewPanY] = useState(0)
+  const [applyToAllNozzles, setApplyToAllNozzles] = useState(false)
   const [sizeVersion, setSizeVersion] = useState(0)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -566,6 +569,7 @@ export default function PivotTrackPage() {
   const layoutRef = useRef<CanvasLayout | null>(null)
   const draggingCenterRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null)
   const draggingNozzleRef = useRef<string | null>(null)
+  const draggingViewRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const loadingConfigRef = useRef(false)
 
@@ -609,6 +613,8 @@ export default function PivotTrackPage() {
       setRotationHours(stored.rotationHours ?? DEFAULT_ROTATION_HOURS)
       setR55(stored.r55 ?? DEFAULT_R55)
       setZoom(stored.zoom ?? 1)
+      setViewPanX(stored.viewPanX ?? 0)
+      setViewPanY(stored.viewPanY ?? 0)
     } else if (fieldMode === 'existing' && selectedField) {
       const nextArea = Math.max(0.0001, fieldAreaSqMeters(selectedField) / 10_000)
       const nextLength = round(fieldGeometry.autoLengthMeters, 1)
@@ -626,6 +632,8 @@ export default function PivotTrackPage() {
       setR55(DEFAULT_R55)
       setWheels(createWheels(8, defaultWidth))
       setZoom(1)
+      setViewPanX(0)
+      setViewPanY(0)
     } else {
       setAreaHa(70)
       setPivotType('circle')
@@ -641,6 +649,8 @@ export default function PivotTrackPage() {
       setR55(DEFAULT_R55)
       setWheels(createWheels(8, defaultWidth))
       setZoom(1)
+      setViewPanX(0)
+      setViewPanY(0)
     }
 
     setSelectedNozzleId(null)
@@ -702,6 +712,8 @@ export default function PivotTrackPage() {
         rotationHours,
         r55,
         zoom,
+        viewPanX,
+        viewPanY,
         wheels,
       }
       updateTaskData((task) => ({
@@ -737,6 +749,8 @@ export default function PivotTrackPage() {
     rotationHours,
     r55,
     zoom,
+    viewPanX,
+    viewPanY,
     wheels,
   ])
 
@@ -775,8 +789,8 @@ export default function PivotTrackPage() {
       (rect.height - padding * 2) / Math.max(visibleRadius * 2, 1),
     ))
     const scale = baseScale * zoom
-    const viewportCenterX = rect.width / 2
-    const viewportCenterY = rect.height / 2
+    const viewportCenterX = rect.width / 2 + viewPanX
+    const viewportCenterY = rect.height / 2 + viewPanY
     const pivotCenter: LocalPoint = { x: centerOffsetX, y: centerOffsetY }
     const centerX = viewportCenterX + pivotCenter.x * scale
     const centerY = viewportCenterY - pivotCenter.y * scale
@@ -969,6 +983,8 @@ export default function PivotTrackPage() {
     nozzles,
     selectedNozzle?.id,
     zoom,
+    viewPanX,
+    viewPanY,
     sizeVersion,
   ])
 
@@ -983,11 +999,14 @@ export default function PivotTrackPage() {
     setCenterOffsetY(0)
     setNozzles((current) => redistributeNozzles(current, nextLength))
     setZoom(1)
+    setViewPanX(0)
+    setViewPanY(0)
   }
 
   const updateNozzle = (id: string, patch: Partial<PivotNozzleConfig>) => {
+    const appliesToPackage = applyToAllNozzles && patch.distanceMeters === undefined
     setNozzles((current) => current.map((nozzle) =>
-      nozzle.id === id ? { ...nozzle, ...patch } : nozzle,
+      appliesToPackage || nozzle.id === id ? { ...nozzle, ...patch } : nozzle,
     ))
   }
 
@@ -1027,7 +1046,16 @@ export default function PivotTrackPage() {
         offsetY: centerOffsetY,
       }
       event.currentTarget.setPointerCapture(event.pointerId)
+      return
     }
+
+    draggingViewRef.current = {
+      startX: point.x,
+      startY: point.y,
+      panX: viewPanX,
+      panY: viewPanY,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1045,14 +1073,22 @@ export default function PivotTrackPage() {
     }
 
     const drag = draggingCenterRef.current
-    if (!drag) return
-    setCenterOffsetX(drag.offsetX + (point.x - drag.startX) / layout.scale)
-    setCenterOffsetY(drag.offsetY - (point.y - drag.startY) / layout.scale)
+    if (drag) {
+      setCenterOffsetX(drag.offsetX + (point.x - drag.startX) / layout.scale)
+      setCenterOffsetY(drag.offsetY - (point.y - drag.startY) / layout.scale)
+      return
+    }
+
+    const viewDrag = draggingViewRef.current
+    if (!viewDrag) return
+    setViewPanX(viewDrag.panX + point.x - viewDrag.startX)
+    setViewPanY(viewDrag.panY + point.y - viewDrag.startY)
   }
 
   const stopDragging = () => {
     draggingCenterRef.current = null
     draggingNozzleRef.current = null
+    draggingViewRef.current = null
   }
 
   const selectedFieldWaterM3 = (model.areaSqMeters * targetDepthMm) / 1000
@@ -1153,6 +1189,18 @@ export default function PivotTrackPage() {
           <button className="ghost-btn" onClick={() => setNozzles((current) => redistributeNozzles(current, pivotLength))}>Distribute</button>
         </div>
 
+        <label className="pivot-switch-row pivot-apply-all-toggle">
+          <input
+            type="checkbox"
+            checked={applyToAllNozzles}
+            onChange={(event) => setApplyToAllNozzles(event.target.checked)}
+          />
+          <span>
+            <strong>Apply nozzle settings to all</strong>
+            <small>Angle, throw radius and On/Off changes affect the complete package. Position remains individual.</small>
+          </span>
+        </label>
+
         {selectedNozzle && (
           <div className="pivot-nozzle-editor">
             <div className="pivot-nozzle-editor-title">
@@ -1225,7 +1273,7 @@ export default function PivotTrackPage() {
 
         <div className="pivot-action-row">
           <button className="ghost-btn" onClick={() => { setCenterOffsetX(0); setCenterOffsetY(0) }}>Reset centre</button>
-          <button className="ghost-btn" onClick={() => setZoom(1)}>Reset zoom</button>
+          <button className="ghost-btn" onClick={() => { setZoom(1); setViewPanX(0); setViewPanY(0) }}>Reset view</button>
         </div>
       </section>
 
@@ -1250,21 +1298,21 @@ export default function PivotTrackPage() {
             <span>{Math.round(zoom * 100)}%</span>
             <button onClick={() => setZoom((current) => clamp(current / 1.2, 0.55, 4))}>−</button>
           </div>
-          <div className="pivot-canvas-hint">Select and drag a nozzle along the frame. Drag the green pivot centre. Scroll or use +/− to zoom.</div>
+          <div className="pivot-canvas-hint">Drag empty space to pan. Drag a nozzle along the frame or the green pivot centre to reposition it. Scroll or use +/− to zoom.</div>
         </div>
 
         <div className="pivot-results">
-          <div className="metric-card"><span>Per 1 m²</span><strong>{targetDepthMm.toFixed(1)} L</strong></div>
-          <div className="metric-card"><span>Per hectare</span><strong>{(targetDepthMm * 10).toFixed(1)} m³</strong></div>
-          <div className="metric-card"><span>Selected field</span><strong>{formatNumber(selectedFieldWaterM3, 0)} m³</strong></div>
-          <div className="metric-card"><span>Frame sweep</span><strong>{formatNumber(idealPivotWaterM3, 0)} m³</strong></div>
+          <div className="metric-card"><span>Per 1 m²</span><strong>{targetDepthMm.toFixed(1)} L · {(targetDepthMm / 1000).toFixed(3)} t</strong></div>
+          <div className="metric-card"><span>Per hectare</span><strong>{(targetDepthMm * 10).toFixed(1)} m³ · {(targetDepthMm * 10).toFixed(1)} t</strong></div>
+          <div className="metric-card"><span>Selected field</span><strong>{formatNumber(selectedFieldWaterM3, 0)} m³ · {formatNumber(selectedFieldWaterM3, 0)} t</strong></div>
+          <div className="metric-card"><span>Frame sweep</span><strong>{formatNumber(idealPivotWaterM3, 0)} m³ · {formatNumber(idealPivotWaterM3, 0)} t</strong></div>
           <div className="metric-card"><span>Current spray footprint</span><strong>{formatNumber(model.coverageAreaSqMeters, 0)} m²</strong></div>
-          <div className="metric-card"><span>Water in footprint</span><strong>{model.coverageWaterM3.toFixed(1)} m³</strong></div>
+          <div className="metric-card"><span>Water in footprint</span><strong>{model.coverageWaterM3.toFixed(1)} m³ · {model.coverageWaterM3.toFixed(1)} t</strong></div>
           <div className="metric-card"><span>Main nozzle flow</span><strong>{model.totalMainFlowM3h.toFixed(1)} m³/h</strong></div>
           <div className="metric-card"><span>Total with R55</span><strong>{totalDesignFlowM3h.toFixed(1)} m³/h</strong></div>
         </div>
         <div className="pivot-method-note">
-          Design estimate: nozzle flow is distributed by serviced annular area, so outer nozzles receive progressively higher flow. Confirm the final nozzle chart, pressure regulators and runoff limit with a Valley/Zimmatic dealer before installation.
+          Design estimate: nozzle flow is distributed by serviced annular area, so outer nozzles receive progressively higher flow. Water mass uses the practical approximation 1 m³ ≈ 1 metric tonne. Confirm the final nozzle chart, pressure regulators and runoff limit with a Valley/Zimmatic dealer before installation.
         </div>
       </section>
     </div>

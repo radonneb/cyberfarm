@@ -10,6 +10,7 @@ type UpdateProjectBody = {
   projectData?: unknown
   fileId?: string | null
   zone?: FarmZone
+  mergeProjectIds?: string[]
 }
 
 function normalizeWriteZone(value: unknown): FarmZone {
@@ -148,6 +149,44 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
         `)
         .bind(id, fileId, now)
         .run()
+    }
+
+    const mergeProjectIds = Array.isArray(body.mergeProjectIds)
+      ? [...new Set(body.mergeProjectIds.map((value) => String(value).trim()))]
+          .filter((projectId) => projectId && projectId !== id)
+      : []
+
+    if (mergeProjectIds.length) {
+      const placeholders = mergeProjectIds.map(() => '?').join(', ')
+      const matching = await env.DB
+        .prepare(`
+          SELECT id
+          FROM projects
+          WHERE farm_id = ? AND archived = 0 AND id IN (${placeholders})
+        `)
+        .bind(farmId, ...mergeProjectIds)
+        .all<Record<string, unknown>>()
+      if ((matching.results ?? []).length !== mergeProjectIds.length) {
+        return json({ ok: false, error: 'One or more workspaces cannot be merged.' }, 409)
+      }
+
+      await env.DB.batch([
+        env.DB
+          .prepare(`
+            INSERT OR IGNORE INTO project_files (project_id, file_id, created_at)
+            SELECT ?, file_id, ?
+            FROM project_files
+            WHERE project_id IN (${placeholders})
+          `)
+          .bind(id, now, ...mergeProjectIds),
+        env.DB
+          .prepare(`
+            UPDATE projects
+            SET archived = 1, updated_at = ?
+            WHERE farm_id = ? AND id IN (${placeholders})
+          `)
+          .bind(now, farmId, ...mergeProjectIds),
+      ])
     }
 
     return json({ ok: true, updatedAt: now })

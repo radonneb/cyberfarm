@@ -83,6 +83,7 @@ type AppStoreValue = {
   draftCreate: DraftCreateState
   generationResult: GenerationResult | null
   dataVersion: number
+  canUndo: boolean
 
   parseAny: (file: File) => Promise<TaskDataModel>
   importAny: (file: File) => Promise<TaskDataModel>
@@ -131,6 +132,7 @@ type AppStoreValue = {
   addGuidancePoint: (fieldId: string, guidanceId: string) => void
   generateLines: (input: GenerationInput) => boolean
   clearGenerationResult: () => void
+  undoLastChange: () => void
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null)
@@ -153,6 +155,7 @@ function loadHistory(): ImportedFileRecord[] {
 }
 
 function saveHistory(_history: ImportedFileRecord[]) {
+  void _history
   // Import history now belongs to D1. Full geometry is never serialized here.
 }
 
@@ -643,8 +646,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     null,
   )
   const [dataVersion, setDataVersion] = useState(0)
+  const [undoStack, setUndoStack] = useState<TaskDataModel[]>([])
 
-  const persistTask = (task: TaskDataModel | null, name: string | null) => {
+  const persistTask = (
+    task: TaskDataModel | null,
+    name: string | null,
+    recordUndo = true,
+  ) => {
+    if (recordUndo && loadedTaskData && task !== loadedTaskData) {
+      setUndoStack((current) => [...current.slice(-39), loadedTaskData])
+    }
     upsertTask(
       task,
       name,
@@ -680,6 +691,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setDraftCreate(emptyDraft())
     setGenerationResult(null)
     setErrorMessage(null)
+    setUndoStack([])
     setDataVersion((prev) => prev + 1)
   }
 
@@ -691,12 +703,34 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setDraftCreate(emptyDraft())
     setGenerationResult(null)
     setErrorMessage(null)
+    setUndoStack([])
     setDataVersion((prev) => prev + 1)
   }
 
   const updateTaskData = (updater: (task: TaskDataModel) => TaskDataModel) => {
     if (!loadedTaskData) return
     persistTask(updater(loadedTaskData), currentFileName)
+  }
+
+  const undoLastChange = () => {
+    const previous = undoStack[undoStack.length - 1]
+    if (!previous) return
+    setUndoStack((current) => current.slice(0, -1))
+    upsertTask(
+      previous,
+      currentFileName,
+      setLoadedTaskData,
+      setCurrentFileName,
+      setImportHistory,
+      importHistory,
+    )
+    setSelectedFieldId((current) =>
+      current && previous.fields.some((field) => field.id === current)
+        ? current
+        : previous.fields[0]?.id ?? null,
+    )
+    setErrorMessage(null)
+    setDataVersion((current) => current + 1)
   }
 
 
@@ -727,6 +761,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const openHistoryItem = (_recordId: string) => {
+    void _recordId
     setErrorMessage('Import history is stored on the server. Open the farm source file instead.')
   }
 
@@ -1273,6 +1308,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       draftCreate,
       generationResult,
       dataVersion,
+      canUndo: undoStack.length > 0,
       parseAny,
       importAny,
       loadTaskData,
@@ -1306,6 +1342,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       addGuidancePoint,
       generateLines,
       clearGenerationResult,
+      undoLastChange,
     }),
     [
       importHistory,
@@ -1317,6 +1354,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       draftCreate,
       generationResult,
       dataVersion,
+      undoStack.length,
     ],
   )
 

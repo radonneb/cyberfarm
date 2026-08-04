@@ -94,15 +94,16 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
       return json({ ok: false, error: 'Select at least one accessible zone.' }, 400)
     }
 
-    const [farm, user] = await Promise.all([
+    const [farm, user, farmsResult] = await Promise.all([
       env.DB.prepare('SELECT id FROM farms WHERE id = ?').bind(farmId).first(),
       env.DB.prepare("SELECT id FROM users WHERE id = ? AND role <> 'admin'").bind(userId).first(),
+      env.DB.prepare('SELECT id FROM farms WHERE archived = 0').all<Record<string, unknown>>(),
     ])
     if (!farm || !user) return json({ ok: false, error: 'Farm or user not found.' }, 404)
 
     const now = new Date().toISOString()
-    await env.DB.batch([
-      env.DB
+    const farmIds = (farmsResult.results ?? []).map((row) => String(row.id))
+    const memberships = farmIds.map((accessibleFarmId) => env.DB
         .prepare(`
           INSERT INTO farm_memberships (
             farm_id, user_id, role, active, created_at, updated_at
@@ -112,11 +113,19 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
             active = excluded.active,
             updated_at = excluded.updated_at
         `)
-        .bind(farmId, userId, role, active ? 1 : 0, now, now),
+        .bind(accessibleFarmId, userId, role, active ? 1 : 0, now, now))
+    const permissions = active
+      ? farmIds.flatMap((accessibleFarmId) =>
+          farmPermissionStatements(env, accessibleFarmId, userId, role, zones, now),
+        )
+      : []
+
+    await env.DB.batch([
+      ...memberships,
       env.DB
-        .prepare('DELETE FROM farm_module_permissions WHERE farm_id = ? AND user_id = ?')
-        .bind(farmId, userId),
-      ...farmPermissionStatements(env, farmId, userId, role, zones, now),
+        .prepare('DELETE FROM farm_module_permissions WHERE user_id = ?')
+        .bind(userId),
+      ...permissions,
     ])
 
     return json({ ok: true })

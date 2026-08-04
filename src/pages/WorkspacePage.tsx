@@ -15,14 +15,18 @@ import ProjectFilesPanel from '../components/ProjectFilesPanel'
 const PivotTrackPage = lazy(() => import('./PivotTrackPage'))
 const GrainBunkerPage = lazy(() => import('./GrainBunkerPage'))
 const PlantingPage = lazy(() => import('./PlantingPage'))
+const FieldsLayersPage = lazy(() => import('./FieldsLayersPage'))
+const RouteBuilderPage = lazy(() => import('./RouteBuilderPage'))
 
 type WorkspaceTool =
   | 'overview'
   | 'files'
+  | 'fields'
   | 'create'
   | 'edit'
   | 'generate'
   | 'planting'
+  | 'routes'
   | 'pivot'
   | 'bunker'
   | 'export'
@@ -60,6 +64,7 @@ type PendingImport = {
   data: TaskDataModel
   mode: 'new-farm' | 'current-farm'
   farmName: string
+  strategy: 'overlay' | 'replace-overlaps'
 }
 
 const tools: Array<{
@@ -70,6 +75,7 @@ const tools: Array<{
   zone: FarmZone
 }> = [
   { id: 'overview', label: 'Maps', icon: '⌖', description: 'Map tools and planting', zone: 'maps' },
+  { id: 'fields', label: 'Fields', icon: '▣', description: 'Fields and map layers', zone: 'maps' },
   { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Irrigation frame', zone: 'pivot' },
   { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank', zone: 'bunker' },
   { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats', zone: 'export' },
@@ -88,6 +94,7 @@ const mapTools: Array<{
   { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', manageOnly: true },
   { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', manageOnly: true },
   { id: 'planting', label: 'Planting', icon: '⁙', description: 'Pass, seeds and yield', manageOnly: true },
+  { id: 'routes', label: 'Routes', icon: '⌁', description: 'Machine trajectory builder', manageOnly: true },
 ]
 
 const mapToolIds = new Set<WorkspaceTool>(mapTools.map((tool) => tool.id))
@@ -124,19 +131,154 @@ function mergeTaskData(
   current: TaskDataModel | null,
   incoming: TaskDataModel,
   farm: FarmSummary,
+  strategy: PendingImport['strategy'],
 ): TaskDataModel {
   const scoped = scopeTaskToFarm(incoming, farm)
   if (!current) return scoped
 
-  const names = new Set(current.fields.map((field) => field.name.trim().toLowerCase()))
+  const retainedFields = strategy === 'replace-overlaps'
+    ? current.fields.filter((existing) =>
+        !scoped.fields.some((candidate) => fieldsOverlap(existing, candidate)),
+      )
+    : current.fields
+  const names = new Set(retainedFields.map((field) => field.name.trim().toLowerCase()))
   const addedFields = scoped.fields.map((field) => cloneField(field, names))
+  const mapLayers = [...(current.tools?.mapLayers ?? []), ...(scoped.tools?.mapLayers ?? [])]
+    .filter((layer, index, all) => all.findIndex((candidate) => candidate.id === layer.id) === index)
+  const routes = [...(current.tools?.routes ?? []), ...(scoped.tools?.routes ?? [])]
+    .filter((route, index, all) => all.findIndex((candidate) => candidate.id === route.id) === index)
 
   return {
     ...current,
     farm: { id: farm.id, name: farm.name, clientId: current.client?.id },
     client: current.client ?? scoped.client,
-    fields: [...current.fields, ...addedFields],
+    fields: [...retainedFields, ...addedFields],
+    tools: {
+      ...current.tools,
+      ...scoped.tools,
+      pivotTracks: { ...current.tools?.pivotTracks, ...scoped.tools?.pivotTracks },
+      plantingPlans: { ...current.tools?.plantingPlans, ...scoped.tools?.plantingPlans },
+      mapLayers,
+      routes,
+    },
   }
+}
+
+type Bounds = { minLat: number; minLon: number; maxLat: number; maxLon: number }
+
+function fieldBounds(field: TaskDataModel['fields'][number]): Bounds | null {
+  const points = field.boundaries.flatMap((boundary) => boundary.points)
+  if (!points.length) return null
+  return {
+    minLat: Math.min(...points.map((point) => point.latitude)),
+    minLon: Math.min(...points.map((point) => point.longitude)),
+    maxLat: Math.max(...points.map((point) => point.latitude)),
+    maxLon: Math.max(...points.map((point) => point.longitude)),
+  }
+}
+
+function boundsIntersect(a: Bounds, b: Bounds) {
+  return a.minLat <= b.maxLat && a.maxLat >= b.minLat
+    && a.minLon <= b.maxLon && a.maxLon >= b.minLon
+}
+
+function pointInRing(
+  point: { latitude: number; longitude: number },
+  ring: Array<{ latitude: number; longitude: number }>,
+) {
+  let inside = false
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    const currentPoint = ring[index]
+    const previousPoint = ring[previous]
+    const crosses = (currentPoint.latitude > point.latitude) !== (previousPoint.latitude > point.latitude)
+      && point.longitude < (
+        (previousPoint.longitude - currentPoint.longitude)
+        * (point.latitude - currentPoint.latitude)
+        / ((previousPoint.latitude - currentPoint.latitude) || Number.EPSILON)
+        + currentPoint.longitude
+      )
+    if (crosses) inside = !inside
+  }
+  return inside
+}
+
+function orientation(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+  c: { latitude: number; longitude: number },
+) {
+  const cross = (b.longitude - a.longitude) * (c.latitude - a.latitude)
+    - (b.latitude - a.latitude) * (c.longitude - a.longitude)
+  if (Math.abs(cross) < 1e-12) return 0
+  return cross > 0 ? 1 : -1
+}
+
+function onSegment(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+  point: { latitude: number; longitude: number },
+) {
+  return point.longitude >= Math.min(a.longitude, b.longitude) - 1e-12
+    && point.longitude <= Math.max(a.longitude, b.longitude) + 1e-12
+    && point.latitude >= Math.min(a.latitude, b.latitude) - 1e-12
+    && point.latitude <= Math.max(a.latitude, b.latitude) + 1e-12
+}
+
+function segmentsIntersect(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+  c: { latitude: number; longitude: number },
+  d: { latitude: number; longitude: number },
+) {
+  const abC = orientation(a, b, c)
+  const abD = orientation(a, b, d)
+  const cdA = orientation(c, d, a)
+  const cdB = orientation(c, d, b)
+  if (abC !== abD && cdA !== cdB) return true
+  return (abC === 0 && onSegment(a, b, c))
+    || (abD === 0 && onSegment(a, b, d))
+    || (cdA === 0 && onSegment(c, d, a))
+    || (cdB === 0 && onSegment(c, d, b))
+}
+
+function ringsIntersect(
+  first: Array<{ latitude: number; longitude: number }>,
+  second: Array<{ latitude: number; longitude: number }>,
+) {
+  if (first.length < 2 || second.length < 2) return false
+  for (let firstIndex = 0; firstIndex < first.length; firstIndex += 1) {
+    const firstNext = (firstIndex + 1) % first.length
+    for (let secondIndex = 0; secondIndex < second.length; secondIndex += 1) {
+      const secondNext = (secondIndex + 1) % second.length
+      if (segmentsIntersect(
+        first[firstIndex],
+        first[firstNext],
+        second[secondIndex],
+        second[secondNext],
+      )) return true
+    }
+  }
+  return false
+}
+
+function fieldsOverlap(
+  existing: TaskDataModel['fields'][number],
+  candidate: TaskDataModel['fields'][number],
+) {
+  if (existing.name.trim().toLowerCase() === candidate.name.trim().toLowerCase()) return true
+  const existingBounds = fieldBounds(existing)
+  const candidateBounds = fieldBounds(candidate)
+  if (!existingBounds || !candidateBounds || !boundsIntersect(existingBounds, candidateBounds)) {
+    return false
+  }
+
+  return existing.boundaries.some((existingBoundary) =>
+    candidate.boundaries.some((candidateBoundary) =>
+      existingBoundary.points.some((point) => pointInRing(point, candidateBoundary.points))
+      || candidateBoundary.points.some((point) => pointInRing(point, existingBoundary.points))
+      || ringsIntersect(existingBoundary.points, candidateBoundary.points),
+    ),
+  )
 }
 
 
@@ -175,6 +317,8 @@ export default function WorkspacePage() {
     errorMessage,
     setErrorMessage,
     dataVersion,
+    canUndo,
+    undoLastChange,
   } = useAppStore()
 
   const isAdmin = user?.role === 'admin'
@@ -193,6 +337,8 @@ export default function WorkspacePage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [dismissedNotifications, setDismissedNotifications] = useState<string[]>([])
   const [mapMenuOpen, setMapMenuOpen] = useState(false)
   const [newFarmName, setNewFarmName] = useState('')
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
@@ -200,21 +346,30 @@ export default function WorkspacePage() {
     ? 'pivot'
     : activeTool === 'bunker'
       ? 'bunker'
-      : mapToolIds.has(activeTool)
+      : activeTool === 'fields' || mapToolIds.has(activeTool)
         ? 'maps'
         : null
   const canSaveActiveZone = Boolean(canManage && saveZone && permissions[saveZone])
+  const notifications = [
+    errorMessage ? { id: `app-error:${errorMessage}`, tone: 'error', message: errorMessage } : null,
+    farmError ? { id: `farm-error:${farmError}`, tone: 'error', message: farmError } : null,
+    statusMessage ? { id: `status:${statusMessage}`, tone: 'info', message: statusMessage } : null,
+  ].filter((item): item is { id: string; tone: string; message: string } =>
+    Boolean(item && !dismissedNotifications.includes(item.id)),
+  )
 
   const allowedTools = useMemo(() => {
     const allowed = new Set<WorkspaceTool>()
     if (permissions.maps) {
       allowed.add('overview')
       allowed.add('files')
+      allowed.add('fields')
       if (canManageMaps) {
         allowed.add('create')
         allowed.add('edit')
         allowed.add('generate')
         allowed.add('planting')
+        allowed.add('routes')
       }
     }
     if (permissions.pivot) allowed.add('pivot')
@@ -247,18 +402,49 @@ export default function WorkspacePage() {
     return next
   }
 
-  const openProject = async (projectId: string) => {
+  const openFarmWorkspace = async (farm: FarmSummary, farmProjects: ProjectSummary[]) => {
+    if (!farmProjects.length) return
     const requestId = ++projectLoadRef.current
     setLoadingProjects(true)
     try {
-      const response = await apiRequest<{ project: ProjectDetail }>(`/api/projects/${projectId}`)
+      const details = await Promise.all(
+        [...farmProjects].reverse().map((project) =>
+          apiRequest<{ project: ProjectDetail }>(`/api/projects/${project.id}`),
+        ),
+      )
       if (requestId !== projectLoadRef.current) return
-      if (!response.project.projectData) throw new Error('This farm workspace has no map data.')
 
-      setActiveProjectId(projectId)
-      loadTaskData(response.project.projectData, response.project.fileName)
+      let combined: TaskDataModel | null = null
+      for (const response of details) {
+        if (!response.project.projectData) continue
+        combined = mergeTaskData(combined, response.project.projectData, farm, 'overlay')
+      }
+      if (!combined) throw new Error('This farm workspace has no map data.')
+
+      const canonical = farmProjects[0]
+      setActiveProjectId(canonical.id)
+      loadTaskData(combined, canonical.fileName)
       setStatusMessage(null)
       setSaveState('idle')
+
+      if (farmProjects.length > 1 && canManageMaps) {
+        await apiRequest(`/api/projects/${canonical.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: farm.name,
+            fileName: canonical.fileName,
+            projectData: combined,
+            zone: 'maps',
+            mergeProjectIds: farmProjects.slice(1).map((project) => project.id),
+          }),
+        })
+        const consolidated = await loadProjects(farm.id)
+        setProjects(consolidated)
+        setStatusMessage(
+          `${farmProjects.length} farm workspaces were safely combined. All fields and source files are now shown together.`,
+        )
+        setSaveState('saved')
+      }
     } catch (error) {
       if (requestId === projectLoadRef.current) {
         setStatusMessage(error instanceof Error ? error.message : 'Unable to open farm workspace.')
@@ -292,7 +478,7 @@ export default function WorkspacePage() {
     loadProjects(activeFarm.id)
       .then(async (next) => {
         if (cancelled) return
-        if (next[0]) await openProject(next[0].id)
+        if (next[0]) await openFarmWorkspace(activeFarm, next)
       })
       .catch((error) => {
         if (!cancelled) {
@@ -352,6 +538,7 @@ export default function WorkspacePage() {
         data,
         mode: activeFarm ? 'current-farm' : 'new-farm',
         farmName: suggestedFarmName(file, data),
+        strategy: 'overlay',
       })
       setStatusMessage(null)
     } catch (error) {
@@ -399,20 +586,26 @@ export default function WorkspacePage() {
         const importedAt = duplicateCheck.import?.completedAt
           ? new Date(duplicateCheck.import.completedAt).toLocaleString('en-GB')
           : 'an earlier date'
-        setPendingImport(null)
         setStatusMessage(
-          `This file was already imported into ${targetFarm.name} on ${importedAt}. No duplicate fields were added.`,
+          `This file was imported on ${importedAt}. Restoring it with the selected merge option…`,
         )
-        return
       }
 
       setStatusMessage('Uploading the source file…')
       const upload = await uploadSourceFile(pendingImport.file, targetFarm.id)
       uploadedFileId = upload.file.id
       const isCurrentFarm = activeFarm?.id === targetFarm.id
-      const existingProjectId = isCurrentFarm ? activeProjectId : null
+      const existingProjectId = isCurrentFarm
+        ? (activeProjectId ?? projects[0]?.id ?? null)
+        : null
+      const serverTask = existingProjectId
+        ? (await apiRequest<{ project: ProjectDetail }>(`/api/projects/${existingProjectId}`)).project.projectData
+        : null
+      const currentTask = serverTask && loadedTaskData && isCurrentFarm
+        ? mergeTaskData(serverTask, loadedTaskData, targetFarm, 'replace-overlaps')
+        : serverTask ?? loadedTaskData
       const nextTask = existingProjectId
-        ? mergeTaskData(loadedTaskData, pendingImport.data, targetFarm)
+        ? mergeTaskData(currentTask, pendingImport.data, targetFarm, pendingImport.strategy)
         : scopeTaskToFarm(pendingImport.data, targetFarm)
 
       if (existingProjectId) {
@@ -580,6 +773,16 @@ export default function WorkspacePage() {
             isAdmin={canManageMaps}
           />
         )
+      case 'fields':
+        return (
+          <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading layers…</h2></section>}>
+            <FieldsLayersPage
+              projectId={activeProjectId}
+              farmId={activeFarm?.id ?? null}
+              canManage={canManageMaps}
+            />
+          </Suspense>
+        )
       case 'create':
         return <CreateFieldPage onComplete={() => setActiveTool('overview')} />
       case 'edit':
@@ -590,6 +793,12 @@ export default function WorkspacePage() {
         return (
           <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Planting…</h2></section>}>
             <PlantingPage />
+          </Suspense>
+        )
+      case 'routes':
+        return (
+          <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading routes…</h2></section>}>
+            <RouteBuilderPage />
           </Suspense>
         )
       case 'pivot':
@@ -634,6 +843,7 @@ export default function WorkspacePage() {
 
   const openRailTool = (tool: WorkspaceTool) => {
     setProfileOpen(false)
+    setNotificationsOpen(false)
     if (tool === 'overview') {
       if (mapSectionActive) {
         setMapMenuOpen((current) => !current)
@@ -698,7 +908,53 @@ export default function WorkspacePage() {
           </section>
         )}
 
-        <div className="profile-menu-wrap">
+        <div className="rail-footer-actions">
+          <div className="notification-menu-wrap">
+            {notificationsOpen && (
+              <div className="notification-popover glass-panel">
+                <div className="notification-popover-head">
+                  <span><small>Activity</small><strong>Notifications</strong></span>
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setDismissedNotifications((current) => [
+                          ...new Set([...current, ...notifications.map((notification) => notification.id)]),
+                        ])
+                        setStatusMessage(null)
+                        setErrorMessage(null)
+                        setNotificationsOpen(false)
+                      }}
+                    >Clear all</button>
+                  )}
+                </div>
+                <div className="notification-list">
+                  {notifications.length ? notifications.map((notification) => (
+                    <article className={`notification-item ${notification.tone}`} key={notification.id}>
+                      <i />
+                      <span>{notification.message}</span>
+                    </article>
+                  )) : (
+                    <div className="notification-empty">No new notifications.</div>
+                  )}
+                </div>
+              </div>
+            )}
+            <button
+              className={`rail-notification ${notificationsOpen ? 'active' : ''}`}
+              onClick={() => {
+                setNotificationsOpen((current) => !current)
+                setProfileOpen(false)
+                setMapMenuOpen(false)
+              }}
+              title="Notifications"
+              aria-label="Notifications"
+            >
+              <span aria-hidden="true">🔔</span>
+              {notifications.length > 0 && <i className="notification-indicator" />}
+            </button>
+          </div>
+
+          <div className="profile-menu-wrap">
           {profileOpen && (
             <div className="profile-popover glass-panel">
               <div className="profile-popover-head">
@@ -756,11 +1012,15 @@ export default function WorkspacePage() {
 
           <button
             className={`rail-profile ${profileOpen ? 'active' : ''}`}
-            onClick={() => setProfileOpen((current) => !current)}
+            onClick={() => {
+              setProfileOpen((current) => !current)
+              setNotificationsOpen(false)
+            }}
             title="Account and farm switcher"
           >
             {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
           </button>
+          </div>
         </div>
       </aside>
 
@@ -778,6 +1038,9 @@ export default function WorkspacePage() {
 
           {canManageMaps && (
             <div className="workspace-actions">
+              <button className="ghost-btn undo-btn" onClick={undoLastChange} disabled={!canUndo || busy} title="Undo last map change">
+                ↶ Undo
+              </button>
               {activeFarm && <button className="ghost-btn" onClick={() => void handleNewMap()} disabled={busy}>Empty map</button>}
               <button className="primary-btn" onClick={() => fileInputRef.current?.click()} disabled={busy}>
                 {busy ? 'Working…' : 'Import'}
@@ -793,20 +1056,6 @@ export default function WorkspacePage() {
             onChange={handleFileSelected}
           />
         </header>
-
-        {(statusMessage || errorMessage || farmError) && (
-          <div className="workspace-notice glass-panel">
-            <span>{errorMessage ?? farmError ?? statusMessage}</span>
-            <button
-              onClick={() => {
-                setStatusMessage(null)
-                setErrorMessage(null)
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
 
         {!canManage && activeFarm && (
           <div className="viewer-banner glass-panel">
@@ -864,9 +1113,37 @@ export default function WorkspacePage() {
               />
               <span>
                 <strong>Add to {activeFarm?.name ?? 'current farm'}</strong>
-                <small>Merge the detected fields into the active farm.</small>
+                <small>Keep the existing fields and apply the option below.</small>
               </span>
             </label>
+
+            {pendingImport.mode === 'current-farm' && (
+              <div className="import-strategy-group">
+                <span className="form-label">When fields overlap</span>
+                <label className={`import-mode-card ${pendingImport.strategy === 'overlay' ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    checked={pendingImport.strategy === 'overlay'}
+                    onChange={() => setPendingImport((current) => current ? { ...current, strategy: 'overlay' } : current)}
+                  />
+                  <span>
+                    <strong>Keep both / overlay</strong>
+                    <small>Existing fields stay untouched; imported copies are added above them.</small>
+                  </span>
+                </label>
+                <label className={`import-mode-card ${pendingImport.strategy === 'replace-overlaps' ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    checked={pendingImport.strategy === 'replace-overlaps'}
+                    onChange={() => setPendingImport((current) => current ? { ...current, strategy: 'replace-overlaps' } : current)}
+                  />
+                  <span>
+                    <strong>Replace overlapping fields</strong>
+                    <small>Only matching or spatially overlapping fields are replaced; all other fields stay.</small>
+                  </span>
+                </label>
+              </div>
+            )}
 
             <div className="modal-actions">
               <button className="ghost-btn" onClick={() => setPendingImport(null)} disabled={busy}>Cancel</button>

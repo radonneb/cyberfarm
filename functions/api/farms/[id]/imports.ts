@@ -98,12 +98,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
       return json({ ok: false, error: 'Source file not found.' }, 404)
     }
 
-    if (fileHash) {
-      const existing = await findDuplicateImport(farmId, fileHash, env)
-      if (existing) {
-        return json({ ok: true, duplicate: true, import: duplicatePayload(existing) })
-      }
-    }
+    const previousImport = fileHash
+      ? await findDuplicateImport(farmId, fileHash, env)
+      : null
 
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
@@ -140,7 +137,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
       )
       .run()
 
-    return json({ ok: true, duplicate: false, id }, 201)
+    return json({
+      ok: true,
+      duplicate: Boolean(previousImport),
+      previousImport: previousImport ? duplicatePayload(previousImport) : null,
+      id,
+    }, 201)
   } catch (error) {
     console.error('Create farm import record failed', error)
     return json({ ok: false, error: 'Unable to record import history.' }, 500)
