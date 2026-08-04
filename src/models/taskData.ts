@@ -72,6 +72,8 @@ export type PivotTrackConfig = {
   rotationHours?: number
   r55?: PivotR55Config
   zoom?: number
+  viewPanX?: number
+  viewPanY?: number
 }
 
 export type PlantingPlanConfig = {
@@ -86,11 +88,42 @@ export type PlantingPlanConfig = {
   grainsPerUnit: number
   weightSampleCount: number
   weightSampleGrams: number
+  targetRateEnabled?: boolean
+  targetRate?: number
+  targetRateUnit?: 'TK/ha' | 'kg/ha'
+  thousandSeedWeightGrams?: number
+}
+
+export type MapLayerConfig = {
+  id: string
+  fileId: string
+  name: string
+  kind: 'vector' | 'raster'
+  visible: boolean
+  opacity: number
+}
+
+export type RoutePointConfig = {
+  id: string
+  latitude: number
+  longitude: number
+  timestamp?: string
+  label?: string
+}
+
+export type RoutePlanConfig = {
+  id: string
+  name: string
+  points: RoutePointConfig[]
+  gapMinutes: number
+  createdAt: string
 }
 
 export type FarmToolData = {
   pivotTracks?: Record<string, PivotTrackConfig>
   plantingPlans?: Record<string, PlantingPlanConfig>
+  mapLayers?: MapLayerConfig[]
+  routes?: RoutePlanConfig[]
 }
 
 export type TaskDataModel = {

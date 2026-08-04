@@ -179,9 +179,9 @@ export default function AdminAccessPanel({ activeFarmId, activeFarmName }: Props
     <div className="admin-access-layout">
       <section className="page-card access-create-card">
         <span className="section-kicker">Email invitation</span>
-        <h2 className="section-title">Invite to {activeFarmName || 'farm'}</h2>
+        <h2 className="section-title">Invite to CyberFarms</h2>
         <p className="muted-copy">
-          The user receives a one-time link, creates their own password and is signed in automatically.
+          The user receives a one-time link, creates a password and is signed in automatically. The role and selected zones apply to every farm; {activeFarmName || 'the selected farm'} opens first.
         </p>
 
         <form onSubmit={sendInvitation} className="access-form">
@@ -222,7 +222,7 @@ export default function AdminAccessPanel({ activeFarmId, activeFarmName }: Props
       <section className="page-card access-list-card">
         <div className="access-heading-row">
           <div>
-            <span className="section-kicker">Farm access</span>
+            <span className="section-kicker">Account access</span>
             <h2 className="section-title">Members and invitations</h2>
           </div>
           <span className="status-chip">{members.length} members</span>

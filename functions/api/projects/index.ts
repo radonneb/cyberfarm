@@ -31,7 +31,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
              p.farm_id, COUNT(pf.file_id) AS file_count
       FROM projects p
       LEFT JOIN project_files pf ON pf.project_id = p.id
-      WHERE p.farm_id = ?
+      WHERE p.farm_id = ? AND p.archived = 0
       GROUP BY p.id
       ORDER BY p.updated_at DESC
     `)

@@ -2051,6 +2051,250 @@ select.text-input option {
   }
 }
 
+/* Notification center, undo and import conflict controls */
+.rail-footer-actions {
+  position: relative;
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.rail-footer-actions .profile-menu-wrap {
+  margin-top: 0;
+}
+
+.notification-menu-wrap {
+  position: relative;
+}
+
+.rail-notification {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #c8d9cf;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.rail-notification:hover,
+.rail-notification.active {
+  background: rgba(242, 201, 76, 0.16);
+  color: var(--yellow);
+}
+
+.rail-notification > span {
+  font-size: 18px;
+  filter: grayscale(1) brightness(1.65);
+}
+
+.notification-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #07170f;
+  border-radius: 50%;
+  background: #ff6c69;
+  box-shadow: 0 0 12px rgba(255, 108, 105, 0.75);
+}
+
+.notification-popover {
+  position: absolute;
+  z-index: 130;
+  left: 58px;
+  bottom: 0;
+  width: min(360px, calc(100vw - 100px));
+  padding: 14px;
+  border-radius: 20px;
+  border-color: rgba(169, 223, 188, 0.22);
+  background: #0a2117;
+  box-shadow: 0 30px 85px rgba(0, 0, 0, 0.68);
+}
+
+.notification-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 3px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.notification-popover-head > span {
+  display: grid;
+  gap: 2px;
+}
+
+.notification-popover-head small {
+  color: #75d598;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+}
+
+.notification-popover-head strong {
+  font-size: 17px;
+}
+
+.notification-popover-head button {
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.notification-list {
+  display: grid;
+  gap: 7px;
+  max-height: 360px;
+  padding-top: 10px;
+  overflow: auto;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 11px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d7e4dc;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.notification-item i {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #70d89a;
+}
+
+.notification-item.error i { background: #ff7774; }
+.notification-empty { padding: 22px 10px; color: var(--muted); text-align: center; font-size: 11px; }
+.undo-btn { min-width: 88px; }
+.import-strategy-group { display: grid; gap: 8px; margin-top: 12px; }
+
+/* Planting target-rate fit */
+.planting-rate-toggle { margin-top: 14px; }
+.planting-rate-settings {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 15px;
+  background: rgba(242, 201, 76, 0.07);
+  border: 1px solid rgba(242, 201, 76, 0.15);
+}
+
+.planting-input-field input:disabled {
+  color: var(--yellow);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.pivot-apply-all-toggle {
+  margin: 10px 0;
+  border-color: rgba(91, 218, 205, 0.18);
+  background: rgba(91, 218, 205, 0.06);
+}
+
+.pivot-canvas-wrap canvas { cursor: grab; touch-action: none; }
+.pivot-canvas-wrap canvas:active { cursor: grabbing; }
+
+/* Fields and persistent layer manager */
+.fields-layers-layout,
+.route-builder-layout {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.layers-panel,
+.route-controls-panel {
+  min-height: 0;
+  padding: 18px;
+}
+
+.layers-add-btn { width: 100%; margin: 10px 0 12px; }
+.layers-list { display: grid; gap: 7px; margin-top: 12px; }
+
+.layer-control-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px 34px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.layer-control-row.base-layer { grid-template-columns: 34px minmax(0, 1fr) auto; }
+.layer-control-row.error { border-color: rgba(255, 108, 105, 0.32); }
+.layer-kind-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: rgba(242, 201, 76, 0.12); color: var(--yellow); font-weight: 900; }
+.layer-control-row > div { min-width: 0; display: grid; gap: 3px; }
+.layer-control-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.layer-control-row small { overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
+.layer-control-row input[type='range'] { width: 100%; accent-color: var(--yellow); }
+.layer-control-row > button { width: 28px; height: 28px; border-radius: 9px; background: rgba(255, 108, 105, 0.1); color: #ff8d89; cursor: pointer; }
+.layer-control-row > b { color: var(--muted); font-size: 8px; }
+
+.fields-layer-map-card,
+.route-map-card {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* Route trajectory builder */
+.route-settings { display: grid; gap: 8px; margin-top: 14px; }
+.route-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.route-summary-grid span { display: grid; gap: 3px; padding: 10px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); color: var(--muted); font-size: 9px; }
+.route-summary-grid strong { color: var(--text); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .fields-layers-layout,
+  .route-builder-layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .fields-layer-map-card,
+  .route-map-card { min-height: 520px; }
+}
+
+@media (max-width: 720px) {
+  .rail-footer-actions {
+    margin-top: 0;
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+  }
+
+  .rail-footer-actions .profile-menu-wrap {
+    margin-left: 0;
+  }
+
+  .notification-popover {
+    position: fixed;
+    inset: auto 8px 75px 8px;
+    width: auto;
+  }
+}
+
 /* 2026 workspace readability and grouped navigation */
 :root {
   --muted: #aebfb4;

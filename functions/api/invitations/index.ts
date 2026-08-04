@@ -107,11 +107,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     try {
       const messageId = await sendResendEmail(env, {
         to: email,
-        subject: `${appName}: invitation to ${String(farm.name)}`,
+        subject: `${appName}: account invitation`,
         text: [
           `Hello ${name},`,
           '',
-          `${auth.user.name || auth.user.email} invited you to ${String(farm.name)} in ${appName}.`,
+          `${auth.user.name || auth.user.email} invited you to ${appName}.`,
+          `Starting farm: ${String(farm.name)}`,
+          'Your role and accessible zones apply to every farm.',
           `Role: ${roleLabel}`,
           `Accessible zones: ${zoneLabel}`,
           '',
@@ -123,13 +125,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#173326">
             <div style="padding:24px;border-radius:18px 18px 0 0;background:#0b3a27;color:#fff">
               <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#8ce0a9">${escapeHtml(appName)}</div>
-              <h1 style="margin:8px 0 0;font-size:24px">Farm access invitation</h1>
+              <h1 style="margin:8px 0 0;font-size:24px">Account access invitation</h1>
             </div>
             <div style="padding:26px;border:1px solid #dce9e1;border-top:0;border-radius:0 0 18px 18px;background:#f8fbf9">
               <p>Hello <strong>${safeName}</strong>,</p>
-              <p>You have been invited to <strong>${safeFarm}</strong>.</p>
+              <p>You have been invited to <strong>${escapeHtml(appName)}</strong>. Your role and accessible zones apply to every farm.</p>
               <div style="margin:20px 0;padding:14px 16px;border-radius:12px;background:#edf6f0">
-                <div><strong>Role:</strong> ${roleLabel}</div>
+                <div><strong>Starting farm:</strong> ${safeFarm}</div>
+                <div style="margin-top:6px"><strong>Role:</strong> ${roleLabel}</div>
                 <div style="margin-top:6px"><strong>Accessible zones:</strong> ${escapeHtml(zoneLabel)}</div>
               </div>
               <a href="${escapeHtml(invitationUrl.toString())}" style="display:inline-block;padding:13px 20px;border-radius:11px;background:#f2c94c;color:#25331d;text-decoration:none;font-weight:700">Create password and join</a>
