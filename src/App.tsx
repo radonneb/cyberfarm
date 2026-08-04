@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { FarmProvider } from './farms/FarmContext'
+import SharedSyncButton from './components/SharedSyncButton'
 import LoginPage from './pages/LoginPage'
 import InvitePage from './pages/InvitePage'
 import WorkspacePage from './pages/WorkspacePage'
@@ -23,6 +24,7 @@ function AppGate() {
   return user ? (
     <FarmProvider>
       <WorkspacePage />
+      <SharedSyncButton />
     </FarmProvider>
   ) : (
     <LoginPage />
