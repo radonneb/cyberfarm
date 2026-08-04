@@ -2056,3 +2056,720 @@ select.text-input option {
     flex-direction: column;
   }
 }
+
+/* Readability and navigation refinement */
+body {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  line-height: 1.3;
+}
+
+h1,
+h2,
+h3,
+strong {
+  font-weight: 760;
+}
+
+.dark-glass-shell.workspace-shell {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+
+.tool-rail {
+  gap: 16px;
+  padding: 16px 10px 13px;
+  background: rgba(3, 16, 10, 0.94);
+}
+
+.tool-rail-nav {
+  gap: 9px;
+}
+
+.tool-rail-item {
+  min-height: 64px;
+  gap: 5px;
+  border-radius: 17px;
+}
+
+.tool-rail-icon {
+  font-size: 22px;
+}
+
+.tool-rail-item small {
+  font-size: 10.5px;
+  font-weight: 720;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+.map-tools-wrap {
+  width: 100%;
+}
+
+.map-tools-drawer {
+  position: fixed;
+  z-index: 140;
+  top: 82px;
+  left: 98px;
+  width: 304px;
+  padding: 14px;
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(10, 36, 24, 0.98), rgba(4, 20, 13, 0.98));
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.map-tools-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 4px 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.map-tools-drawer-head div {
+  display: grid;
+  gap: 3px;
+}
+
+.map-tools-drawer-head span {
+  color: var(--yellow);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.map-tools-drawer-head strong {
+  color: var(--text);
+  font-size: 17px;
+}
+
+.map-tools-drawer-head button {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.map-tools-drawer-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.map-drawer-item {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-drawer-item:hover,
+.map-drawer-item.active {
+  background: var(--yellow-soft);
+}
+
+.map-drawer-item.active .map-drawer-icon,
+.map-drawer-item.active .map-drawer-arrow {
+  color: var(--yellow);
+}
+
+.map-drawer-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--green-deep);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.map-drawer-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.map-drawer-copy strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.map-drawer-copy small {
+  overflow: hidden;
+  color: #a6b9ae;
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-drawer-arrow {
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.profile-popover {
+  left: 68px;
+  width: 340px;
+  padding: 18px;
+  background: linear-gradient(145deg, rgba(10, 36, 24, 0.98), rgba(4, 20, 13, 0.98));
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.profile-popover-head strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.profile-popover-head span,
+.farm-menu-label {
+  color: #a5baae;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.profile-files-link {
+  width: 100%;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-files-link:hover,
+.profile-files-link.active {
+  background: var(--yellow-soft);
+}
+
+.profile-files-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(242, 201, 76, 0.14);
+  color: var(--yellow);
+  font-size: 16px;
+}
+
+.profile-files-link > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.profile-files-link strong {
+  font-size: 13px;
+}
+
+.profile-files-link small {
+  overflow: hidden;
+  color: #a5baae;
+  font-size: 10.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-switch-row {
+  min-height: 46px;
+  font-size: 12.5px;
+}
+
+.farm-switch-row small {
+  font-size: 10px;
+}
+
+.workspace-title-wrap h1 {
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.workspace-meta,
+.muted-copy,
+.empty-panel,
+.hint-box,
+.draft-info-box,
+.result-detail,
+.field-item-v2 span,
+.info-block-title span {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.eyebrow,
+.section-kicker,
+.form-label {
+  font-size: 10.5px;
+  line-height: 1.35;
+  letter-spacing: 0.12em;
+}
+
+.section-title {
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.text-input,
+select.text-input {
+  min-height: 44px;
+  font-size: 13.5px;
+}
+
+.primary-btn,
+.secondary-btn,
+.ghost-btn,
+.success-btn,
+.danger-btn,
+.seg-btn-v2,
+.mini-delete {
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.admin-access-layout .page-card {
+  background: linear-gradient(145deg, rgba(14, 43, 30, 0.96), rgba(7, 27, 18, 0.96));
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.admin-access-layout .muted-copy,
+.admin-access-layout .access-user-copy span,
+.admin-access-layout .permission-toggle {
+  color: #aec0b6;
+}
+
+.admin-access-layout .access-user-row {
+  min-height: 66px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.admin-access-layout .access-user-copy strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.admin-access-layout .access-user-copy span,
+.admin-access-layout .permission-toggle {
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* Planting planner */
+.planting-layout {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 330px minmax(420px, 1fr) 318px;
+  gap: 12px;
+}
+
+.planting-controls,
+.planting-results {
+  min-height: 0;
+  overflow: auto;
+}
+
+.planting-controls,
+.planting-results,
+.planting-visual-card {
+  background: linear-gradient(145deg, rgba(13, 41, 29, 0.95), rgba(6, 25, 17, 0.94));
+  border-color: rgba(255, 255, 255, 0.11);
+}
+
+.planting-intro,
+.planting-canvas-note {
+  color: #a8bbb0;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.planting-intro {
+  margin: -3px 0 17px;
+}
+
+.planting-controls .text-input {
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+
+.planting-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.planting-derived-strip,
+.planting-direction-note {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.planting-derived-strip span,
+.planting-direction-note {
+  color: #a5baae;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.planting-derived-strip strong {
+  color: var(--yellow);
+  font-size: 12px;
+}
+
+.planting-direction-note {
+  justify-content: flex-start;
+  margin-top: 7px;
+  color: #8ce0a9;
+}
+
+.yield-toggle {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(242, 201, 76, 0.16);
+  border-radius: 15px;
+  background: var(--yellow-soft);
+  cursor: pointer;
+}
+
+.yield-toggle input {
+  margin-top: 4px;
+  accent-color: var(--yellow);
+}
+
+.yield-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.yield-toggle strong {
+  color: #f5de81;
+  font-size: 12.5px;
+}
+
+.yield-toggle small {
+  color: #c6b86f;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.yield-controls {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 15px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.planting-visual-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.planting-visual-head {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 3px;
+}
+
+.planting-visual-head h2 {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 19px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planting-canvas-wrap {
+  position: relative;
+  min-height: 440px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #07170f;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+}
+
+.planting-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.planting-canvas-note {
+  margin: 0 4px 2px;
+}
+
+.planting-result-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.planting-result-card {
+  min-height: 92px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 14px 15px;
+  border-radius: 17px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.planting-result-card.cyan {
+  background: rgba(105, 220, 255, 0.10);
+  border-color: rgba(105, 220, 255, 0.2);
+}
+
+.planting-result-card.yellow {
+  background: rgba(242, 201, 76, 0.11);
+  border-color: rgba(242, 201, 76, 0.2);
+}
+
+.planting-result-card.green {
+  background: rgba(77, 187, 120, 0.12);
+  border-color: rgba(77, 187, 120, 0.22);
+}
+
+.planting-result-card span,
+.planting-result-card small {
+  color: #a7bbb0;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.planting-result-card strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(24px, 2.2vw, 34px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planting-operation-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.planting-operation-summary div {
+  min-width: 0;
+  padding: 10px 8px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.planting-operation-summary span,
+.planting-operation-summary strong {
+  display: block;
+}
+
+.planting-operation-summary span {
+  color: #9fb2a7;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.planting-operation-summary strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yield-result-panel {
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 17px;
+  background: linear-gradient(145deg, rgba(77, 187, 120, 0.15), rgba(242, 201, 76, 0.07));
+  border: 1px solid rgba(77, 187, 120, 0.18);
+}
+
+.yield-result-primary {
+  display: grid;
+  gap: 3px;
+  margin: 9px 0 12px;
+}
+
+.yield-result-primary span,
+.yield-result-grid span {
+  color: #a8bbb0;
+  font-size: 10px;
+}
+
+.yield-result-primary strong {
+  color: #8ce0a9;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.yield-result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.yield-result-grid div {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.yield-result-grid span,
+.yield-result-grid strong {
+  display: block;
+}
+
+.yield-result-grid strong {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planting-pdf-button {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 12px;
+}
+
+.planting-message {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--green-soft);
+  color: #a8e7bc;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1280px) {
+  .planting-layout {
+    grid-template-columns: 310px minmax(420px, 1fr);
+    overflow: auto;
+  }
+
+  .planting-results {
+    grid-column: 1 / -1;
+    overflow: visible;
+  }
+
+  .planting-result-stack {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .dark-glass-shell.workspace-shell {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .map-tools-drawer {
+    left: 88px;
+  }
+
+  .planting-layout {
+    grid-template-columns: 290px minmax(360px, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .dark-glass-shell.workspace-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .map-tools-drawer {
+    inset: auto 8px 78px 8px;
+    width: auto;
+    max-height: min(520px, calc(100vh - 98px));
+    overflow: auto;
+  }
+
+  .profile-popover {
+    left: auto;
+    width: min(340px, calc(100vw - 16px));
+  }
+
+  .planting-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .planting-controls,
+  .planting-results {
+    overflow: visible;
+  }
+
+  .planting-canvas-wrap {
+    min-height: 520px;
+  }
+
+  .planting-result-stack,
+  .planting-input-grid {
+    grid-template-columns: 1fr;
+  }
+}

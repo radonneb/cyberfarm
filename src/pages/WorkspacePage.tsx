@@ -14,6 +14,7 @@ import ProjectFilesPanel from '../components/ProjectFilesPanel'
 
 const PivotTrackPage = lazy(() => import('./PivotTrackPage'))
 const GrainBunkerPage = lazy(() => import('./GrainBunkerPage'))
+const PlantingPage = lazy(() => import('./PlantingPage'))
 
 type WorkspaceTool =
   | 'overview'
@@ -21,6 +22,7 @@ type WorkspaceTool =
   | 'create'
   | 'edit'
   | 'generate'
+  | 'planting'
   | 'pivot'
   | 'bunker'
   | 'export'
@@ -60,23 +62,30 @@ type PendingImport = {
   farmName: string
 }
 
-const tools: Array<{
+type ToolDefinition = {
   id: WorkspaceTool
   label: string
   icon: string
   description: string
   adminOnly?: boolean
-}> = [
-  { id: 'overview', label: 'Map', icon: '⌖', description: 'Fields and guidance' },
-  { id: 'files', label: 'Files', icon: '▣', description: 'Farm source files' },
+}
+
+const mapTools: ToolDefinition[] = [
+  { id: 'overview', label: 'Overview', icon: '⌖', description: 'Fields and guidance' },
   { id: 'create', label: 'Create', icon: '+', description: 'Field or guidance', adminOnly: true },
   { id: 'edit', label: 'Edit', icon: '✦', description: 'Geometry and names', adminOnly: true },
   { id: 'generate', label: 'Lines', icon: '≋', description: 'Parallel guidance', adminOnly: true },
+  { id: 'planting', label: 'Planting', icon: '•••', description: 'Passes, seeds and yield' },
+]
+
+const primaryTools: ToolDefinition[] = [
   { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Wheel tracks' },
   { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank' },
   { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats' },
   { id: 'access', label: 'Access', icon: '◎', description: 'Users and permissions', adminOnly: true },
 ]
+
+const mapToolIds = new Set<WorkspaceTool>(mapTools.map((tool) => tool.id))
 
 function normalizeProject(project: ProjectSummaryRaw): ProjectSummary {
   return {
@@ -177,6 +186,7 @@ export default function WorkspacePage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [mapDrawerOpen, setMapDrawerOpen] = useState(false)
   const [newFarmName, setNewFarmName] = useState('')
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
 
@@ -451,6 +461,7 @@ export default function WorkspacePage() {
     try {
       await switchFarm(farmId)
       setProfileOpen(false)
+      setMapDrawerOpen(false)
       setStatusMessage(null)
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Unable to switch farm.')
@@ -491,8 +502,16 @@ export default function WorkspacePage() {
     }
   }
 
-  const visibleTools = tools.filter((tool) => !tool.adminOnly || canManage)
+  const visiblePrimaryTools = primaryTools.filter((tool) => !tool.adminOnly || canManage)
+  const visibleMapTools = mapTools.filter((tool) => !tool.adminOnly || canManage)
+  const mapSectionActive = mapToolIds.has(activeTool)
   const canDisplayWorkspace = Boolean(loadedTaskData)
+
+  const activateTool = (tool: WorkspaceTool) => {
+    setActiveTool(tool)
+    setMapDrawerOpen(false)
+    setProfileOpen(false)
+  }
 
   const renderTool = () => {
     if (!canDisplayWorkspace && activeTool !== 'access') {
@@ -532,6 +551,12 @@ export default function WorkspacePage() {
         return <EditFieldPage />
       case 'generate':
         return <GenerateLinesPage />
+      case 'planting':
+        return (
+          <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Planting…</h2></section>}>
+            <PlantingPage />
+          </Suspense>
+        )
       case 'pivot':
         return (
           <Suspense fallback={<section className="empty-workspace-state glass-panel"><h2>Loading Pivot Track…</h2></section>}>
@@ -573,12 +598,56 @@ export default function WorkspacePage() {
         <div className="brand-mark rail-brand">CF</div>
 
         <nav className="tool-rail-nav" aria-label="CyberFarm tools">
-          {visibleTools.map((tool) => (
+          <div className="map-tools-wrap">
+            <button
+              className={`tool-rail-item ${mapSectionActive ? 'active' : ''}`}
+              title="Maps — fields and planning tools"
+              aria-expanded={mapDrawerOpen}
+              onClick={() => {
+                setProfileOpen(false)
+                if (!mapSectionActive) setActiveTool('overview')
+                setMapDrawerOpen((open) => !open)
+              }}
+            >
+              <span className="tool-rail-icon">⌖</span>
+              <small>Maps</small>
+            </button>
+
+            {mapDrawerOpen && (
+              <div className="map-tools-drawer glass-panel">
+                <div className="map-tools-drawer-head">
+                  <div>
+                    <span>Map tools</span>
+                    <strong>Build and plan</strong>
+                  </div>
+                  <button aria-label="Close map tools" onClick={() => setMapDrawerOpen(false)}>×</button>
+                </div>
+                <div className="map-tools-drawer-list">
+                  {visibleMapTools.map((tool) => (
+                    <button
+                      key={tool.id}
+                      className={`map-drawer-item ${activeTool === tool.id ? 'active' : ''}`}
+                      onClick={() => activateTool(tool.id)}
+                    >
+                      <span className="map-drawer-icon">{tool.icon}</span>
+                      <span className="map-drawer-copy">
+                        <strong>{tool.label}</strong>
+                        <small>{tool.description}</small>
+                      </span>
+                      <span className="map-drawer-arrow">›</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {visiblePrimaryTools.map((tool) => (
             <button
               key={tool.id}
               className={`tool-rail-item ${activeTool === tool.id ? 'active' : ''}`}
               title={`${tool.label} — ${tool.description}`}
-              onClick={() => setActiveTool(tool.id)}
+              onClick={() => activateTool(tool.id)}
             >
               <span className="tool-rail-icon">{tool.icon}</span>
               <small>{tool.label}</small>
@@ -593,6 +662,18 @@ export default function WorkspacePage() {
                 <strong>{user?.name || user?.email}</strong>
                 <span>{isAdmin ? 'Administrator' : activeFarm?.role ?? 'Viewer'}</span>
               </div>
+
+              <button
+                className={`profile-files-link ${activeTool === 'files' ? 'active' : ''}`}
+                onClick={() => activateTool('files')}
+              >
+                <span className="profile-files-icon">▣</span>
+                <span>
+                  <strong>Farm files</strong>
+                  <small>{projects.reduce((sum, project) => sum + project.fileCount, 0)} source files in {activeFarm?.name ?? 'this farm'}</small>
+                </span>
+                <span>›</span>
+              </button>
 
               <div className="farm-menu-label">Active farm</div>
               <div className="farm-switch-list">
@@ -625,8 +706,11 @@ export default function WorkspacePage() {
           )}
 
           <button
-            className={`rail-profile ${profileOpen ? 'active' : ''}`}
-            onClick={() => setProfileOpen((current) => !current)}
+            className={`rail-profile ${profileOpen || activeTool === 'files' ? 'active' : ''}`}
+            onClick={() => {
+              setMapDrawerOpen(false)
+              setProfileOpen((current) => !current)
+            }}
             title="Account and farm switcher"
           >
             {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
