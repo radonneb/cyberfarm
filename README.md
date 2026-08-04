@@ -46,4 +46,7 @@ npm run build
 npx wrangler pages deploy dist --project-name cyberfarm --branch CyberFarm
 ```
 
+Invitation email is delivered through Resend. Complete the one-time setup in
+[`docs/resend-setup.md`](./docs/resend-setup.md) before sending invitations.
+
 Do not apply the remote migration until the code has passed `npm run build` on a machine with npm registry access.

@@ -5,6 +5,7 @@ import {
   normalizeZones,
 } from '../../lib/access'
 import { json, normalizeEmail, requireAdmin, type Env } from '../../lib/auth'
+import { sendResendEmail } from '../../lib/resend'
 
 type InvitationBody = {
   email?: string
@@ -42,10 +43,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!zones.length) {
       return json({ ok: false, error: 'Select at least one accessible zone.' }, 400)
     }
-    if (!env.EMAIL || !env.EMAIL_FROM) {
+    if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
       return json({
         ok: false,
-        error: 'Cloudflare Email Sending is not configured for this deployment.',
+        error: 'Resend is not configured for this deployment.',
       }, 503)
     }
 
@@ -104,9 +105,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const zoneLabel = zones.map((zone) => zone[0].toUpperCase() + zone.slice(1)).join(', ')
 
     try {
-      const result = await env.EMAIL.send({
-        from: { email: env.EMAIL_FROM, name: appName },
-        to: { email, name },
+      const messageId = await sendResendEmail(env, {
+        to: email,
         subject: `${appName}: invitation to ${String(farm.name)}`,
         text: [
           `Hello ${name},`,
@@ -145,7 +145,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           SET email_message_id = ?, email_error = NULL, updated_at = ?
           WHERE id = ?
         `)
-        .bind(String(result?.messageId ?? '') || null, new Date().toISOString(), id)
+        .bind(messageId, new Date().toISOString(), id)
         .run()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Email delivery failed.'
@@ -157,7 +157,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return json({
         ok: false,
         invitationId: id,
-        error: 'Invitation was saved, but Cloudflare could not send the email. Check Email Sending setup and retry.',
+        error: 'Invitation was saved, but Resend could not send the email. Check the Resend domain and API key, then retry.',
       }, 502)
     }
 
