@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: cyberfarm-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -26,23 +31,22 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Debug Cloudflare env
+      - name: Validate Cloudflare credentials
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "CLOUDFLARE_API_TOKEN is missing"
-            exit 1
-          fi
-          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "CLOUDFLARE_ACCOUNT_ID is missing"
-            exit 1
-          fi
-          echo "Cloudflare env is present"
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "CLOUDFLARE_API_TOKEN is missing" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "CLOUDFLARE_ACCOUNT_ID is missing" && exit 1)
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Verify Grain Bunker formulas
+        run: npm run verify:bunker
 
       - name: Build project
         run: npm run build
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply cyberfarm-db --remote
 
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy dist --project-name cyberfarm --branch CyberFarm

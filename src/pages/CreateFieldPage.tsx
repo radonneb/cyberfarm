@@ -59,7 +59,7 @@ export default function CreateFieldPage({ onComplete }: Props) {
             <div className="action-row compact-actions">
               <button className="ghost-btn small-btn" onClick={() => startCreateNewField(draftCreate.fieldName, draftCreate.guidanceName)}>Start boundary</button>
               <button className="ghost-btn small-btn" onClick={() => setEditorMode('drawGuidance')}>Start guidance</button>
-              <button className="success-btn small-btn" onClick={saveCreate}>Save</button>
+              <button className="success-btn small-btn" onClick={saveCreate}>Finish</button>
             </div>
           </>
         ) : (
@@ -74,7 +74,7 @@ export default function CreateFieldPage({ onComplete }: Props) {
             <div className="hint-box compact-box">Select a field, start guidance, place the points on the map, then save.</div>
             <div className="action-row compact-actions">
               <button className="ghost-btn small-btn" onClick={() => draftFieldId && startCreateGuidanceForField(draftFieldId, draftCreate.guidanceName)}>Start guidance</button>
-              <button className="success-btn small-btn" onClick={saveCreate}>Save</button>
+              <button className="success-btn small-btn" onClick={saveCreate}>Finish</button>
             </div>
           </>
         )}

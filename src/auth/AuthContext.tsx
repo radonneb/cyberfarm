@@ -26,6 +26,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 const USER_CACHE_KEY = 'cyberfarm_signed_user'
 const TASK_KEYS = [
+  'gargha_import_history',
   'gargha_current_taskdata',
   'gargha_current_file_name',
   'cyberfarm_active_project',

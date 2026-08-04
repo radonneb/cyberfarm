@@ -7,7 +7,8 @@
     "dev": "node ./node_modules/vite/dist/node/cli.js",
     "build": "node ./node_modules/typescript/lib/tsc.js -b && node ./node_modules/vite/dist/node/cli.js build",
     "lint": "eslint .",
-    "preview": "node ./node_modules/vite/dist/node/cli.js preview"
+    "preview": "node ./node_modules/vite/dist/node/cli.js preview",
+    "verify:bunker": "node scripts/verify-grain-bunker.mjs"
   },
   "dependencies": {
     "@tmcw/togeojson": "^7.1.2",

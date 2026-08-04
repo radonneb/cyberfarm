@@ -1,5 +1,3 @@
-export type AppLanguage = 'en' | 'ru' | 'az'
-
 export type GeoPoint = {
   id: string
   latitude: number
@@ -37,10 +35,34 @@ export type FieldModel = {
   guidanceLines: GuidanceLine[]
 }
 
+
+export type PivotTrackWheelConfig = {
+  enabled: boolean
+  widthMeters: number
+}
+
+export type PivotTrackConfig = {
+  fieldId: string | null
+  fieldMode: 'existing' | 'free'
+  pivotType: 'circle' | 'sector'
+  sectorAngle: number
+  fieldAreaHa: number
+  pivotLengthMeters: number
+  positionDegrees: number
+  centerOffsetXMeters: number
+  centerOffsetYMeters: number
+  wheels: PivotTrackWheelConfig[]
+}
+
+export type FarmToolData = {
+  pivotTracks?: Record<string, PivotTrackConfig>
+}
+
 export type TaskDataModel = {
   client?: ClientModel | null
   farm?: FarmModel | null
   fields: FieldModel[]
+  tools?: FarmToolData
 }
 
 export type ImportedFileRecord = {
@@ -48,7 +70,6 @@ export type ImportedFileRecord = {
   originalFileName: string
   cachedFileName: string
   importDate: string
-  snapshot?: TaskDataModel
 }
 
 export type EditorMode = 'view' | 'drawField' | 'drawGuidance'
@@ -110,6 +131,7 @@ export function cloneTaskData(task: TaskDataModel): TaskDataModel {
   return {
     client: task.client ? { ...task.client } : task.client,
     farm: task.farm ? { ...task.farm } : task.farm,
+    tools: task.tools ? structuredClone(task.tools) : undefined,
     fields: task.fields.map((field) => ({
       ...field,
       boundaries: field.boundaries.map(cloneBoundary),

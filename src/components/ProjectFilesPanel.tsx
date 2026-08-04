@@ -53,10 +53,12 @@ function formatDate(value: string) {
 export default function ProjectFilesPanel({
   projectId,
   projectName,
+  farmId,
   isAdmin,
 }: {
   projectId: string | null
   projectName: string
+  farmId: string | null
   isAdmin: boolean
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -96,13 +98,14 @@ export default function ProjectFilesPanel({
   const uploadFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!projectId || !file || !isAdmin) return
+    if (!projectId || !farmId || !file || !isAdmin) return
 
     setBusy(true)
     setMessage('Uploading to Cloudflare R2…')
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('farmId', farmId)
       const uploaded = await apiRequest<{ file: { id: string } }>('/api/files', {
         method: 'POST',
         body: formData,
@@ -121,13 +124,33 @@ export default function ProjectFilesPanel({
     }
   }
 
+  const deleteFile = async (file: ProjectFile) => {
+    if (!projectId || !isAdmin) return
+    if (!window.confirm(`Delete “${file.name}” from this farm?`)) return
+
+    setBusy(true)
+    setMessage('Deleting file…')
+    try {
+      await apiRequest(
+        `/api/projects/${projectId}/files?fileId=${encodeURIComponent(file.id)}`,
+        { method: 'DELETE' },
+      )
+      await loadFiles()
+      setMessage('File deleted from D1 and R2.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to delete file.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (!projectId) {
     return (
       <section className="empty-workspace-state">
         <div className="empty-workspace-symbol">↥</div>
-        <span className="section-kicker">Project files</span>
+        <span className="section-kicker">Farm files</span>
         <h2>Save or open a project first</h2>
-        <p>Files are attached to a Cloudflare project and stored in the R2 bucket.</p>
+        <p>Files are attached to the active farm workspace and stored in Cloudflare R2.</p>
       </section>
     )
   }
@@ -161,14 +184,21 @@ export default function ProjectFilesPanel({
         {files.length ? (
           <div className="project-files-list">
             {files.map((file) => (
-              <a className="project-file-row" href={`/api/files/${file.id}`} key={file.id}>
+              <div className="project-file-row" key={file.id}>
                 <div className="project-file-icon">DOC</div>
                 <div className="project-file-copy">
                   <strong>{file.name}</strong>
                   <span>{file.contentType} · {formatBytes(file.sizeBytes)} · {formatDate(file.createdAt)}</span>
                 </div>
-                <span className="project-file-download">Download</span>
-              </a>
+                <div className="project-file-actions">
+                  <a className="project-file-download" href={`/api/files/${file.id}`}>Download</a>
+                  {isAdmin && (
+                    <button className="project-file-delete" onClick={() => void deleteFile(file)} disabled={busy}>
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         ) : (
