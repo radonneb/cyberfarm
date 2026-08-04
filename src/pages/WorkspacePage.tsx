@@ -57,6 +57,7 @@ type ProjectDetail = {
   farmId: string | null
   fileName: string | null
   projectData: TaskDataModel | null
+  updatedAt: string
 }
 
 type PendingImport = {
@@ -125,6 +126,22 @@ function scopeTaskToFarm(task: TaskDataModel, farm: FarmSummary): TaskDataModel 
     farm: { id: farm.id, name: farm.name, clientId: task.client?.id },
     fields: task.fields.map((field) => ({ ...field, farmId: farm.id })),
   }
+}
+
+function removeLegacyGeneratedLines(task: TaskDataModel) {
+  let removed = false
+  const cleaned: TaskDataModel = {
+    ...task,
+    fields: task.fields.map((field) => {
+      const guidanceLines = field.guidanceLines.filter((line) => {
+        const legacy = line.id.startsWith('generated-')
+        if (legacy) removed = true
+        return !legacy
+      })
+      return guidanceLines.length === field.guidanceLines.length ? field : { ...field, guidanceLines }
+    }),
+  }
+  return { task: cleaned, removed }
 }
 
 function mergeTaskData(
@@ -312,11 +329,12 @@ export default function WorkspacePage() {
     currentFileName,
     parseAny,
     loadTaskData,
+    replaceTaskDataFromCloud,
     clearTaskData,
     createEmptyMap,
     errorMessage,
     setErrorMessage,
-    dataVersion,
+    mutationVersion,
     canUndo,
     undoLastChange,
   } = useAppStore()
@@ -328,10 +346,18 @@ export default function WorkspacePage() {
   const saveTimerRef = useRef<number | null>(null)
   const projectLoadRef = useRef(0)
   const suppressFarmReloadRef = useRef<string | null>(null)
+  const lastScheduledMutationRef = useRef(0)
+  const remoteUpdatedAtRef = useRef('')
+  const pendingSaveRef = useRef(false)
+  const activeSaveRequestsRef = useRef(0)
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const saveNowRef = useRef<(() => void) | null>(null)
+  const activeProjectIdRef = useRef<string | null>(null)
 
   const [activeTool, setActiveTool] = useState<WorkspaceTool>('overview')
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  activeProjectIdRef.current = activeProjectId
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [busy, setBusy] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
@@ -420,15 +446,18 @@ export default function WorkspacePage() {
         combined = mergeTaskData(combined, response.project.projectData, farm, 'overlay')
       }
       if (!combined) throw new Error('This farm workspace has no map data.')
+      const cleaned = removeLegacyGeneratedLines(combined)
+      combined = cleaned.task
 
       const canonical = farmProjects[0]
       setActiveProjectId(canonical.id)
       loadTaskData(combined, canonical.fileName)
+      remoteUpdatedAtRef.current = details.find((item) => item.project.id === canonical.id)?.project.updatedAt ?? canonical.updatedAt
       setStatusMessage(null)
       setSaveState('idle')
 
-      if (farmProjects.length > 1 && canManageMaps) {
-        await apiRequest(`/api/projects/${canonical.id}`, {
+      if ((farmProjects.length > 1 || cleaned.removed) && canManageMaps) {
+        const saved = await apiRequest<{ updatedAt: string }>(`/api/projects/${canonical.id}`, {
           method: 'PUT',
           body: JSON.stringify({
             name: farm.name,
@@ -438,10 +467,13 @@ export default function WorkspacePage() {
             mergeProjectIds: farmProjects.slice(1).map((project) => project.id),
           }),
         })
+        remoteUpdatedAtRef.current = saved.updatedAt
         const consolidated = await loadProjects(farm.id)
         setProjects(consolidated)
         setStatusMessage(
-          `${farmProjects.length} farm workspaces were safely combined. All fields and source files are now shown together.`,
+          farmProjects.length > 1
+            ? `${farmProjects.length} farm workspaces were safely combined. All fields and source files are now shown together.`
+            : 'Old automatically generated preview lines were removed.',
         )
         setSaveState('saved')
       }
@@ -496,32 +528,85 @@ export default function WorkspacePage() {
   }, [activeFarm?.id])
 
   useEffect(() => {
-    if (!canSaveActiveZone || !saveZone || !activeProjectId || !loadedTaskData || busy) return
+    if (!canSaveActiveZone || !saveZone || !activeProjectId || !loadedTaskData) return
+    if (mutationVersion <= lastScheduledMutationRef.current) return
+    lastScheduledMutationRef.current = mutationVersion
 
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     setSaveState('saving')
+    pendingSaveRef.current = true
+    const projectId = activeProjectId
+    const snapshot = structuredClone(loadedTaskData)
+    const snapshotName = currentFileName
+    const snapshotZone = saveZone
+    const projectName = activeFarm?.name ?? activeProject?.name ?? 'Farm workspace'
 
-    saveTimerRef.current = window.setTimeout(() => {
-      void apiRequest(`/api/projects/${activeProjectId}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          name: activeFarm?.name ?? activeProject?.name ?? 'Farm workspace',
-          fileName: currentFileName,
-          projectData: loadedTaskData,
-          zone: saveZone,
-        }),
-      })
-        .then(() => setSaveState('saved'))
-        .catch((error) => {
+    let started = false
+    const enqueueSave = () => {
+      if (started) return
+      started = true
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+      saveQueueRef.current = saveQueueRef.current.then(async () => {
+        activeSaveRequestsRef.current += 1
+        try {
+          const response = await apiRequest<{ updatedAt: string }>(`/api/projects/${projectId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              name: projectName,
+              fileName: snapshotName,
+              projectData: snapshot,
+              zone: snapshotZone,
+            }),
+          })
+          if (projectId === activeProjectIdRef.current) remoteUpdatedAtRef.current = response.updatedAt
+          setSaveState('saved')
+        } catch (error) {
           setSaveState('error')
           setStatusMessage(error instanceof Error ? error.message : 'Automatic save failed.')
-        })
-    }, 900)
-
-    return () => {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+        } finally {
+          activeSaveRequestsRef.current = Math.max(0, activeSaveRequestsRef.current - 1)
+          if (!saveTimerRef.current && activeSaveRequestsRef.current === 0) pendingSaveRef.current = false
+        }
+      })
     }
-  }, [dataVersion, activeProjectId, canSaveActiveZone, saveZone])
+    saveNowRef.current = enqueueSave
+    saveTimerRef.current = window.setTimeout(enqueueSave, 650)
+  }, [mutationVersion, activeProjectId, canSaveActiveZone, saveZone, loadedTaskData, currentFileName, activeFarm?.name, activeProject?.name])
+
+  useEffect(() => {
+    const flush = () => saveNowRef.current?.()
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!activeProjectId || !activeFarm) return
+    const projectId = activeProjectId
+    const farmId = activeFarm.id
+    const refresh = async () => {
+      if (pendingSaveRef.current || saveTimerRef.current) return
+      try {
+        const response = await apiRequest<{ project: ProjectDetail }>(`/api/projects/${projectId}`)
+        if (response.project.farmId !== farmId || response.project.updatedAt === remoteUpdatedAtRef.current) return
+        if (!response.project.projectData) return
+        const cleaned = removeLegacyGeneratedLines(response.project.projectData)
+        remoteUpdatedAtRef.current = response.project.updatedAt
+        replaceTaskDataFromCloud(cleaned.task, response.project.fileName)
+        setSaveState('saved')
+        setStatusMessage('Cloud changes loaded.')
+      } catch { /* Keep the current local map during a transient network error. */ }
+    }
+    const interval = window.setInterval(() => void refresh(), 12_000)
+    const onFocus = () => void refresh()
+    window.addEventListener('focus', onFocus)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', onFocus) }
+  }, [activeProjectId, activeFarm?.id])
 
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -696,6 +781,8 @@ export default function WorkspacePage() {
 
     setBusy(true)
     try {
+      saveNowRef.current?.()
+      await saveQueueRef.current
       await switchFarm(farmId)
       setProfileOpen(false)
       setStatusMessage(null)

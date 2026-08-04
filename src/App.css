@@ -2232,7 +2232,7 @@ select.text-input option {
 .layer-control-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 20px 34px minmax(0, 1fr) 28px;
+  grid-template-columns: 20px 34px minmax(0, 1fr) 28px 28px;
   align-items: center;
   gap: 8px;
   padding: 10px;
@@ -2250,6 +2250,13 @@ select.text-input option {
 .layer-control-row input[type='range'] { width: 100%; accent-color: var(--yellow); }
 .layer-control-row > button { width: 28px; height: 28px; border-radius: 9px; background: rgba(255, 108, 105, 0.1); color: #ff8d89; cursor: pointer; }
 .layer-control-row > b { color: var(--muted); font-size: 8px; }
+.layer-control-row.selected { border-color: rgba(247, 201, 72, 0.55); }
+.layer-control-row[draggable='true'] { cursor: grab; }
+.layer-control-row > button.layer-focus-btn { background: rgba(79, 140, 255, 0.13); color: #93b7ff; }
+.layer-label-toggle { display: flex; align-items: center; gap: 9px; margin: 10px 0; color: var(--text); font-size: 12px; }
+.layer-label-toggle input { accent-color: var(--yellow); }
+.field-name-marker { width: auto !important; height: auto !important; }
+.field-name-marker span { display: inline-block; transform: translate(-50%, -50%); padding: 4px 8px; border: 1px solid rgba(247, 201, 72, 0.62); border-radius: 7px; background: rgba(6, 17, 12, 0.9); color: #fff4bd; font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
 
 .fields-layer-map-card,
 .route-map-card {

@@ -11,6 +11,7 @@ export default function GenerateLinesPage() {
     generationResult,
     clearGenerationResult,
     generateLines,
+    applyGeneratedLines,
     setErrorMessage,
     dataVersion,
   } = useAppStore()
@@ -25,7 +26,7 @@ export default function GenerateLinesPage() {
 
   const allFields = loadedTaskData?.fields ?? []
   const selectedField = allFields.find((field) => field.id === selectedFieldId) ?? null
-  const { polygonLayer, guidanceLayer } = useMapLayers()
+  const { polygonLayer, guidanceLayer } = useMapLayers(true)
 
   const submitGenerate = () => {
     if (!selectedFieldId) {
@@ -100,6 +101,7 @@ export default function GenerateLinesPage() {
 
         <div className="action-row compact-actions sticky-actions">
           <button className="primary-btn small-btn" onClick={submitGenerate}>Generate</button>
+          <button className="ghost-btn small-btn" onClick={applyGeneratedLines} disabled={!generationResult}>Save lines</button>
           <button className="ghost-btn small-btn" onClick={clearGenerationResult}>Clear</button>
         </div>
       </section>
