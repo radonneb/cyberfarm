@@ -17,6 +17,24 @@ type PermissionRow = {
   allowed: number | boolean
 }
 
+type FarmRow = {
+  id: string
+  name: string
+}
+
+type InvitationRow = {
+  id: string
+  email: string
+  name: string
+  role: 'editor' | 'viewer'
+  farm_id: string
+  farm_name: string
+  expires_at: string
+  accepted_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
 type Props = {
   activeProjectId: string | null
   activeProjectName: string
@@ -25,15 +43,30 @@ type Props = {
 export default function AdminAccessPanel({ activeProjectId, activeProjectName }: Props) {
   const [users, setUsers] = useState<ViewerUser[]>([])
   const [permissions, setPermissions] = useState<PermissionRow[]>([])
+  const [farms, setFarms] = useState<FarmRow[]>([])
+  const [invitations, setInvitations] = useState<InvitationRow[]>([])
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
-  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<'editor' | 'viewer'>('viewer')
+  const [farmId, setFarmId] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const loadUsers = async () => {
     const response = await apiRequest<{ users: ViewerUser[] }>('/api/users')
     setUsers(response.users.filter((user) => user.role === 'viewer'))
+  }
+
+  const loadFarms = async () => {
+    const response = await apiRequest<{ farms: FarmRow[] }>('/api/farms')
+    setFarms(response.farms)
+    setFarmId((current) => current || response.farms[0]?.id || '')
+  }
+
+  const loadInvitations = async () => {
+    const response = await apiRequest<{ invitations: InvitationRow[] }>('/api/invitations')
+    setInvitations(response.invitations)
   }
 
   const loadPermissions = async () => {
@@ -48,7 +81,9 @@ export default function AdminAccessPanel({ activeProjectId, activeProjectName }:
   }
 
   useEffect(() => {
-    void loadUsers().catch((error) => setMessage(error.message))
+    void Promise.all([loadUsers(), loadFarms(), loadInvitations()]).catch((error) =>
+      setMessage(error.message),
+    )
   }, [])
 
   useEffect(() => {
@@ -60,22 +95,30 @@ export default function AdminAccessPanel({ activeProjectId, activeProjectName }:
     [permissions],
   )
 
-  const createUser = async (event: FormEvent) => {
+  const createInvitation = async (event: FormEvent) => {
     event.preventDefault()
     setBusy(true)
     setMessage(null)
+    setInviteLink(null)
     try {
-      await apiRequest('/api/users', {
+      const response = await apiRequest<{
+        delivery: { sent: boolean; reason?: string }
+        inviteUrl?: string
+      }>('/api/invitations', {
         method: 'POST',
-        body: JSON.stringify({ email, name, password }),
+        body: JSON.stringify({ email, name, role, farmId }),
       })
       setEmail('')
       setName('')
-      setPassword('')
-      setMessage('Viewer account created.')
-      await Promise.all([loadUsers(), loadPermissions()])
+      setMessage(
+        response.delivery.sent
+          ? 'Invitation email sent.'
+          : response.delivery.reason || 'Invitation created, but email was not sent.',
+      )
+      setInviteLink(response.inviteUrl ?? null)
+      await loadInvitations()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to create account.')
+      setMessage(error instanceof Error ? error.message : 'Unable to create invitation.')
     } finally {
       setBusy(false)
     }
@@ -109,28 +152,36 @@ export default function AdminAccessPanel({ activeProjectId, activeProjectName }:
     }
   }
 
+  const invitationStatus = (invitation: InvitationRow) => {
+    if (invitation.accepted_at) return 'Accepted'
+    if (invitation.revoked_at) return 'Revoked'
+    if (new Date(invitation.expires_at).getTime() <= Date.now()) return 'Expired'
+    return 'Pending'
+  }
+
   return (
     <div className="admin-access-layout">
       <section className="page-card access-create-card">
-        <span className="section-kicker">Viewer account</span>
-        <h2 className="section-title">Create read-only access</h2>
+        <span className="section-kicker">Invitation-only access</span>
+        <h2 className="section-title">Invite a farm member</h2>
         <p className="muted-copy">
-          Viewers can open only projects explicitly shared with them. Editing and uploading remain disabled.
+          CyberFarm sends a one-time link. The recipient creates their own password before the account becomes active.
         </p>
 
-        <form onSubmit={createUser} className="access-form">
-          <label className="form-label" htmlFor="viewer-name">Name</label>
+        <form onSubmit={createInvitation} className="access-form">
+          <label className="form-label" htmlFor="invite-name">Name</label>
           <input
-            id="viewer-name"
+            id="invite-name"
             className="text-input"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Employee name"
+            required
           />
 
-          <label className="form-label" htmlFor="viewer-email">Email</label>
+          <label className="form-label" htmlFor="invite-email">Email</label>
           <input
-            id="viewer-email"
+            id="invite-email"
             className="text-input"
             type="email"
             value={email}
@@ -139,37 +190,68 @@ export default function AdminAccessPanel({ activeProjectId, activeProjectName }:
             required
           />
 
-          <label className="form-label" htmlFor="viewer-password">Temporary password</label>
-          <input
-            id="viewer-password"
+          <label className="form-label" htmlFor="invite-farm">Farm</label>
+          <select
+            id="invite-farm"
             className="text-input"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="At least 8 characters"
-            minLength={8}
+            value={farmId}
+            onChange={(event) => setFarmId(event.target.value)}
             required
-          />
+          >
+            {farms.map((farm) => (
+              <option key={farm.id} value={farm.id}>{farm.name}</option>
+            ))}
+          </select>
 
-          <button className="primary-btn" type="submit" disabled={busy}>
-            {busy ? 'Creating…' : 'Create viewer'}
+          <label className="form-label" htmlFor="invite-role">Role</label>
+          <select
+            id="invite-role"
+            className="text-input"
+            value={role}
+            onChange={(event) => setRole(event.target.value === 'editor' ? 'editor' : 'viewer')}
+          >
+            <option value="viewer">Viewer — read-only</option>
+            <option value="editor">Editor — create and manage</option>
+          </select>
+
+          <button className="primary-btn" type="submit" disabled={busy || !farmId}>
+            {busy ? 'Sending…' : 'Send invitation'}
           </button>
         </form>
+
+        {message && <div className="inline-alert">{message}</div>}
+        {inviteLink && (
+          <div className="inline-alert">
+            Email delivery is unavailable. Copy this one-time link:
+            <input className="text-input" readOnly value={inviteLink} onFocus={(event) => event.currentTarget.select()} />
+          </div>
+        )}
+
+        <div className="access-user-list">
+          {invitations.slice(0, 8).map((invitation) => (
+            <div className="access-user-row" key={invitation.id}>
+              <div className="user-avatar">{invitation.name.slice(0, 1).toUpperCase()}</div>
+              <div className="access-user-copy">
+                <strong>{invitation.name}</strong>
+                <span>{invitation.email} · {invitation.farm_name} · {invitation.role}</span>
+              </div>
+              <span className="status-chip">{invitationStatus(invitation)}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="page-card access-list-card">
         <div className="access-heading-row">
           <div>
-            <span className="section-kicker">Project permissions</span>
+            <span className="section-kicker">Existing project permissions</span>
             <h2 className="section-title">{activeProjectName || 'Select a project'}</h2>
           </div>
-          <span className="status-chip">{users.length} viewers</span>
+          <span className="status-chip">{users.length} active accounts</span>
         </div>
 
-        {message && <div className="inline-alert">{message}</div>}
-
         {!activeProjectId ? (
-          <div className="empty-panel">Open a project before assigning access.</div>
+          <div className="empty-panel">Open a project before assigning legacy project access.</div>
         ) : users.length ? (
           <div className="access-user-list">
             {users.map((user) => {
@@ -201,7 +283,7 @@ export default function AdminAccessPanel({ activeProjectId, activeProjectName }:
             })}
           </div>
         ) : (
-          <div className="empty-panel">Create the first viewer account.</div>
+          <div className="empty-panel">No activated invited accounts yet.</div>
         )}
       </section>
     </div>

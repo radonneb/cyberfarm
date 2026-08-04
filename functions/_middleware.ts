@@ -4,6 +4,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/session',
+  '/api/invitations/accept',
 ])
 
 export const onRequest: PagesFunction<Env> = async (context) => {
@@ -11,7 +12,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const path = new URL(request.url).pathname
 
   // The application shell and static assets are public. The React app displays
-  // the email login screen. Only server APIs require an authenticated session.
+  // the login or invitation-acceptance screen. Only protected APIs require a session.
   if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path)) {
     return next()
   }
