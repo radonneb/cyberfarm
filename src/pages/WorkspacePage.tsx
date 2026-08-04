@@ -70,7 +70,7 @@ const tools: Array<{
   adminOnly?: boolean
 }> = [
   { id: 'overview', label: 'Maps', icon: '⌖', description: 'Map tools and planting' },
-  { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Wheel tracks' },
+  { id: 'pivot', label: 'Pivot', icon: '◉', description: 'Irrigation frame' },
   { id: 'bunker', label: 'Bunker', icon: '▱', description: 'Grain tank' },
   { id: 'export', label: 'Export', icon: '⇩', description: 'Machine formats' },
   { id: 'access', label: 'Access', icon: '◎', description: 'Users and permissions', adminOnly: true },

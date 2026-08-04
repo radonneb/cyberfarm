@@ -2333,7 +2333,7 @@ button {
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: 330px minmax(0, 1fr);
+  grid-template-columns: 370px minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -2342,14 +2342,15 @@ button {
   overflow: auto;
 }
 
-.pivot-center-note {
-  margin: -4px 0 14px;
-  padding: 10px 11px;
-  border-radius: 13px;
-  background: var(--green-soft);
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.45;
+.pivot-two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.pivot-two-column label,
+.pivot-inline-control label {
+  min-width: 0;
 }
 
 .pivot-range {
@@ -2358,16 +2359,220 @@ button {
   accent-color: var(--yellow);
 }
 
+.pivot-range.compact {
+  margin: 7px 0 12px;
+}
+
 .pivot-inline-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  align-items: start;
+  align-items: end;
 }
 
 .pivot-inline-control .ghost-btn {
-  margin-top: 7px;
+  margin-bottom: 7px;
   white-space: nowrap;
+}
+
+.pivot-detection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px 0 14px;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid rgba(80, 200, 120, 0.18);
+  border-radius: 13px;
+  background: var(--green-soft);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.pivot-detection-row strong {
+  color: var(--text);
+}
+
+.pivot-detection-row .ghost-btn {
+  min-height: 31px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.pivot-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 10px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.pivot-section-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.pivot-section-heading strong {
+  font-size: 15px;
+}
+
+.pivot-section-heading > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.pivot-nozzle-editor,
+.pivot-r55-card {
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.pivot-nozzle-editor-title {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pivot-nozzle-editor-title > span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.pivot-nozzle-editor-title > strong {
+  font-size: 13px;
+}
+
+.pivot-nozzle-editor-title button {
+  min-width: 43px;
+  height: 28px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.pivot-nozzle-editor-title button.enabled {
+  background: rgba(80, 200, 120, 0.16);
+  color: #70dc99;
+}
+
+.pivot-nozzle-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.pivot-nozzle-stats span {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.pivot-nozzle-stats strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.pivot-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.pivot-switch-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--yellow);
+}
+
+.pivot-switch-row span {
+  display: grid;
+  gap: 2px;
+}
+
+.pivot-switch-row strong {
+  font-size: 12px;
+}
+
+.pivot-switch-row small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.pivot-equipment-note {
+  margin-top: 4px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(80, 200, 120, 0.09);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.pivot-equipment-note.warning {
+  background: rgba(242, 201, 76, 0.1);
+  color: #e9cf75;
+}
+
+.pivot-subpanel {
+  margin: 10px 0 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.pivot-subpanel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 45px;
+  padding: 0 12px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pivot-subpanel summary::marker {
+  color: var(--yellow);
+}
+
+.pivot-subpanel summary strong {
+  min-width: 25px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  text-align: center;
+  font-size: 9px;
+}
+
+.pivot-subpanel-body {
+  padding: 0 10px 11px;
+}
+
+.pivot-apply-button {
+  width: 100%;
+  margin: 1px 0 9px;
 }
 
 .pivot-action-row {
@@ -2424,9 +2629,22 @@ button {
   color: var(--text);
 }
 
+.pivot-track-result {
+  margin-top: 8px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: rgba(242, 201, 76, 0.08);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.pivot-track-result strong {
+  color: var(--yellow);
+}
+
 .pivot-visual-card {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 12px;
   padding: 12px;
   overflow: hidden;
@@ -2451,6 +2669,60 @@ button {
   touch-action: none;
 }
 
+.pivot-flow-legend {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  display: grid;
+  grid-template-columns: auto 72px auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(2, 14, 8, 0.74);
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.pivot-flow-legend i {
+  width: 72px;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, hsl(205, 86%, 61%), hsl(120, 86%, 61%), hsl(40, 86%, 61%));
+}
+
+.pivot-zoom-controls {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  display: grid;
+  grid-template-columns: 32px 48px 32px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  background: rgba(2, 14, 8, 0.78);
+}
+
+.pivot-zoom-controls button {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.pivot-zoom-controls span {
+  color: var(--muted);
+  text-align: center;
+  font-size: 9px;
+  font-weight: 850;
+}
+
 .pivot-canvas-hint {
   position: absolute;
   left: 14px;
@@ -2466,13 +2738,23 @@ button {
 
 .pivot-results {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.pivot-method-note {
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 @media (max-width: 1000px) {
   .pivot-layout {
-    grid-template-columns: 290px minmax(0, 1fr);
+    grid-template-columns: 320px minmax(0, 1fr);
   }
 
   .pivot-results {
@@ -2492,6 +2774,10 @@ button {
 
   .pivot-canvas-wrap {
     min-height: 420px;
+  }
+
+  .pivot-flow-legend {
+    display: none;
   }
 }
 

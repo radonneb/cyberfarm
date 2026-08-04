@@ -41,6 +41,20 @@ export type PivotTrackWheelConfig = {
   widthMeters: number
 }
 
+export type PivotNozzleConfig = {
+  id: string
+  enabled: boolean
+  distanceMeters: number
+  sprayAngleDegrees: number
+  throwMeters: number
+}
+
+export type PivotR55Config = {
+  enabled: boolean
+  throwMeters: number
+  sprayAngleDegrees: number
+}
+
 export type PivotTrackConfig = {
   fieldId: string | null
   fieldMode: 'existing' | 'free'
@@ -52,6 +66,12 @@ export type PivotTrackConfig = {
   centerOffsetXMeters: number
   centerOffsetYMeters: number
   wheels: PivotTrackWheelConfig[]
+  sectorStartDegrees?: number
+  nozzles?: PivotNozzleConfig[]
+  targetDepthMm?: number
+  rotationHours?: number
+  r55?: PivotR55Config
+  zoom?: number
 }
 
 export type PlantingPlanConfig = {
