@@ -2,7 +2,12 @@ import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
 import { claimFileForFarm } from '../../lib/files'
 import { FARM_ZONES, type FarmZone } from '../../lib/access'
 import { requireFarmZone } from '../../lib/farms'
-import { deleteProjectData, readProjectData, writeProjectData } from '../../lib/projectData'
+import {
+  deleteProjectData,
+  ProjectDataConflict,
+  readProjectData,
+  writeProjectData,
+} from '../../lib/projectData'
 
 type UpdateProjectBody = {
   name?: string
@@ -11,6 +16,8 @@ type UpdateProjectBody = {
   fileId?: string | null
   zone?: FarmZone
   mergeProjectIds?: string[]
+  expectedRevision?: number | null
+  allowEmpty?: boolean
 }
 
 function normalizeWriteZone(value: unknown): FarmZone {
@@ -39,12 +46,16 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 
   if (!row) return json({ ok: false, error: 'Project not found.' }, 404)
 
-  let projectData: unknown = null
+  let state
   try {
-    projectData = await readProjectData(row, env)
+    state = await readProjectData(row, env)
   } catch (error) {
-    console.error('Read project data failed', error)
-    return json({ ok: false, error: 'Unable to load project map data.' }, 500)
+    console.error('Read shared project data failed', error)
+    return json({
+      ok: false,
+      error: 'Unable to read the shared project database. The local map was not changed.',
+      code: 'PROJECT_DATABASE_READ_FAILED',
+    }, 500)
   }
 
   const files = await env.DB
@@ -67,7 +78,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
       fileName: row.file_name ? String(row.file_name) : null,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
-      projectData,
+      projectData: state.data,
+      dataRevision: state.revision,
+      dataChecksum: state.checksum,
+      dataStatus: state.storage,
+      dataWarning: state.warning ?? null,
+      fieldCount: state.fieldCount,
+      byteSize: state.byteSize,
       files: files.results ?? [],
     },
   })
@@ -112,13 +129,22 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
       return json({ ok: false, error: 'File not found.' }, 404)
     }
 
+    let savedState: Awaited<ReturnType<typeof writeProjectData>> | null = null
     if (body.projectData !== undefined) {
-      const key = await writeProjectData(
+      const expectedRevision = body.expectedRevision == null
+        ? null
+        : Number(body.expectedRevision)
+      savedState = await writeProjectData(
         env,
         farmId,
         id,
         body.projectData,
-        String(existing.project_data_key ?? '') || null,
+        {
+          existingKey: String(existing.project_data_key ?? '') || null,
+          expectedRevision: Number.isFinite(expectedRevision) ? expectedRevision : null,
+          allowEmpty: body.allowEmpty === true,
+          updatedBy: auth.user.id,
+        },
       )
 
       await env.DB
@@ -128,7 +154,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
               project_json = NULL, project_data_key = ?
           WHERE id = ?
         `)
-        .bind(name, fileName, now, key, id)
+        .bind(name, fileName, now, savedState.key, id)
         .run()
     } else {
       await env.DB
@@ -189,10 +215,26 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
       ])
     }
 
-    return json({ ok: true, updatedAt: now })
+    return json({
+      ok: true,
+      updatedAt: now,
+      dataRevision: savedState?.revision ?? null,
+      dataChecksum: savedState?.checksum ?? null,
+      fieldCount: savedState?.fieldCount ?? null,
+      backupStored: savedState?.backupStored ?? null,
+    })
   } catch (error) {
+    if (error instanceof ProjectDataConflict) {
+      return json({
+        ok: false,
+        error: error.message,
+        code: error.code,
+        currentRevision: error.currentRevision,
+        currentFieldCount: error.currentFieldCount,
+      }, 409)
+    }
     console.error('Update project failed', error)
-    return json({ ok: false, error: 'Failed to update project.' }, 500)
+    return json({ ok: false, error: 'Failed to update the shared project.' }, 500)
   }
 }
 
@@ -232,7 +274,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
     env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id),
   ])
 
-  await deleteProjectData(env, project.project_data_key)
+  await deleteProjectData(env, id, project.project_data_key)
 
   for (const file of attachedFiles.results ?? []) {
     const fileId = String(file.id)
