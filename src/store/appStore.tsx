@@ -82,12 +82,15 @@ type AppStoreValue = {
   editorMode: EditorMode
   draftCreate: DraftCreateState
   generationResult: GenerationResult | null
+  generatedPreview: { fieldId: string; lines: GuidanceLine[] } | null
   dataVersion: number
+  mutationVersion: number
   canUndo: boolean
 
   parseAny: (file: File) => Promise<TaskDataModel>
   importAny: (file: File) => Promise<TaskDataModel>
   loadTaskData: (task: TaskDataModel, fileName: string | null) => void
+  replaceTaskDataFromCloud: (task: TaskDataModel, fileName: string | null) => void
   clearTaskData: () => void
   updateTaskData: (updater: (task: TaskDataModel) => TaskDataModel) => void
   setErrorMessage: (value: string | null) => void
@@ -131,6 +134,7 @@ type AppStoreValue = {
   ) => void
   addGuidancePoint: (fieldId: string, guidanceId: string) => void
   generateLines: (input: GenerationInput) => boolean
+  applyGeneratedLines: () => boolean
   clearGenerationResult: () => void
   undoLastChange: () => void
 }
@@ -645,7 +649,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(
     null,
   )
+  const [generatedPreview, setGeneratedPreview] = useState<{
+    fieldId: string
+    lines: GuidanceLine[]
+  } | null>(null)
   const [dataVersion, setDataVersion] = useState(0)
+  const [mutationVersion, setMutationVersion] = useState(0)
   const [undoStack, setUndoStack] = useState<TaskDataModel[]>([])
 
   const persistTask = (
@@ -665,6 +674,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       importHistory,
     )
     setDataVersion((prev) => prev + 1)
+    if (recordUndo) setMutationVersion((prev) => prev + 1)
   }
 
   const parseAny = async (file: File): Promise<TaskDataModel> => {
@@ -690,7 +700,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setEditorMode('view')
     setDraftCreate(emptyDraft())
     setGenerationResult(null)
+    setGeneratedPreview(null)
     setErrorMessage(null)
+    setUndoStack([])
+    setDataVersion((prev) => prev + 1)
+  }
+
+  const replaceTaskDataFromCloud = (task: TaskDataModel, fileName: string | null) => {
+    setLoadedTaskData(task)
+    setCurrentFileName(fileName)
+    setSelectedFieldId((current) =>
+      current && task.fields.some((field) => field.id === current)
+        ? current
+        : task.fields[0]?.id ?? null,
+    )
+    setGenerationResult(null)
+    setGeneratedPreview(null)
     setUndoStack([])
     setDataVersion((prev) => prev + 1)
   }
@@ -702,6 +727,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setEditorMode('view')
     setDraftCreate(emptyDraft())
     setGenerationResult(null)
+    setGeneratedPreview(null)
     setErrorMessage(null)
     setUndoStack([])
     setDataVersion((prev) => prev + 1)
@@ -731,6 +757,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     )
     setErrorMessage(null)
     setDataVersion((current) => current + 1)
+    setMutationVersion((current) => current + 1)
   }
 
 
@@ -1182,7 +1209,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
 
     const baseGuidanceLine =
-      field.guidanceLines.find((line) => !line.id.startsWith('generated-')) ??
+      field.guidanceLines.find((line) => line.source !== 'generated' && !line.id.startsWith('generated-')) ??
       field.guidanceLines[0]
 
     if (!baseGuidanceLine || baseGuidanceLine.points.length < 2) {
@@ -1222,9 +1249,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
 
     const generatedGuidanceLines: GuidanceLine[] = generated.map((line, index) => ({
-      id: `generated-${field.id}-${index + 1}`,
+      id: `preview-${field.id}-${index + 1}`,
       name: `${line.lineNumber > 0 ? `+${line.lineNumber}` : line.lineNumber}`,
       points: line.points,
+      source: 'generated',
     }))
 
     const metrics: GeneratedLineMetric[] = generated
@@ -1258,43 +1286,40 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
     result.totalMaterialSummary = totalMaterialSummary(input.operation, result)
 
-    const next: TaskDataModel = {
-      ...loadedTaskData,
-      fields: loadedTaskData.fields.map((item) =>
-        item.id !== field.id
-          ? item
-          : {
-              ...item,
-              guidanceLines: [
-                ...item.guidanceLines.filter((line) => !line.id.startsWith('generated-')),
-                ...generatedGuidanceLines,
-              ],
-            },
-      ),
-    }
-
-    persistTask(next, currentFileName)
+    setGeneratedPreview({ fieldId: field.id, lines: generatedGuidanceLines })
     setGenerationResult(result)
     setSelectedFieldId(field.id)
     setErrorMessage(null)
     return true
   }
 
-  const clearGenerationResult = () => {
-    setGenerationResult(null)
-    if (!loadedTaskData) return
-
+  const applyGeneratedLines = () => {
+    if (!loadedTaskData || !generatedPreview) return false
     const next: TaskDataModel = {
       ...loadedTaskData,
-      fields: loadedTaskData.fields.map((field) => ({
-        ...field,
-        guidanceLines: field.guidanceLines.filter(
-          (line) => !line.id.startsWith('generated-'),
-        ),
-      })),
+      fields: loadedTaskData.fields.map((field) =>
+        field.id !== generatedPreview.fieldId
+          ? field
+          : {
+              ...field,
+              guidanceLines: [
+                ...field.guidanceLines.filter(
+                  (line) => line.source !== 'generated' && !line.id.startsWith('generated-'),
+                ),
+                ...generatedPreview.lines.map((line) => ({ ...line, id: uid() })),
+              ],
+            },
+      ),
     }
-
     persistTask(next, currentFileName)
+    setGeneratedPreview(null)
+    setErrorMessage(null)
+    return true
+  }
+
+  const clearGenerationResult = () => {
+    setGenerationResult(null)
+    setGeneratedPreview(null)
   }
 
   const value = useMemo<AppStoreValue>(
@@ -1307,11 +1332,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       editorMode,
       draftCreate,
       generationResult,
+      generatedPreview,
       dataVersion,
+      mutationVersion,
       canUndo: undoStack.length > 0,
       parseAny,
       importAny,
       loadTaskData,
+      replaceTaskDataFromCloud,
       clearTaskData,
       updateTaskData,
       setErrorMessage,
@@ -1341,6 +1369,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateGuidancePoint,
       addGuidancePoint,
       generateLines,
+      applyGeneratedLines,
       clearGenerationResult,
       undoLastChange,
     }),
@@ -1353,7 +1382,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       editorMode,
       draftCreate,
       generationResult,
+      generatedPreview,
       dataVersion,
+      mutationVersion,
       undoStack.length,
     ],
   )

@@ -13,6 +13,8 @@ export type GuidanceLine = {
   id: string
   name: string
   points: GeoPoint[]
+  source?: 'generated' | 'route'
+  sourceRouteId?: string
 }
 
 export type ClientModel = {
@@ -101,6 +103,12 @@ export type MapLayerConfig = {
   kind: 'vector' | 'raster'
   visible: boolean
   opacity: number
+  createdAt?: string
+  sizeBytes?: number
+  contentType?: string
+  crs?: string
+  widthPixels?: number
+  heightPixels?: number
 }
 
 export type RoutePointConfig = {
@@ -117,6 +125,14 @@ export type RoutePlanConfig = {
   points: RoutePointConfig[]
   gapMinutes: number
   createdAt: string
+  visible?: boolean
+  color?: string
+  lineWidth?: number
+  showPoints?: boolean
+}
+
+export type MapViewConfig = {
+  showFieldLabels?: boolean
 }
 
 export type FarmToolData = {
@@ -124,6 +140,7 @@ export type FarmToolData = {
   plantingPlans?: Record<string, PlantingPlanConfig>
   mapLayers?: MapLayerConfig[]
   routes?: RoutePlanConfig[]
+  mapView?: MapViewConfig
 }
 
 export type TaskDataModel = {
@@ -168,6 +185,8 @@ export function cloneGuidanceLine(line: GuidanceLine, index = 0): GuidanceLine {
     id: uid(),
     name: line.name.trim() || `Guidance ${index + 1}`,
     points: line.points.map(clonePoint),
+    source: line.source,
+    sourceRouteId: line.sourceRouteId,
   }
 }
 

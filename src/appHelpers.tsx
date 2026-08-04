@@ -139,14 +139,15 @@ export function renderMaterialDetails(line: NonNullable<ReturnType<typeof useApp
   return <div className="result-detail">Materials: not required</div>
 }
 
-export function useMapLayers() {
-  const { loadedTaskData } = useAppStore()
+export function useMapLayers(includeGeneratedPreview = false) {
+  const { loadedTaskData, generatedPreview } = useAppStore()
+  const fields = loadedTaskData?.fields
 
   const polygonLayer = useMemo(() => {
-    if (!loadedTaskData) return null
+    if (!fields) return null
     return {
       type: 'FeatureCollection' as const,
-      features: loadedTaskData.fields.flatMap((field) =>
+      features: fields.flatMap((field) =>
         field.boundaries
           .filter((boundary) => boundary.points.length >= 3)
           .map((boundary) => ({
@@ -165,14 +166,18 @@ export function useMapLayers() {
           })),
       ),
     }
-  }, [loadedTaskData])
+  }, [fields])
 
   const guidanceLayer = useMemo(() => {
-    if (!loadedTaskData) return null
+    if (!fields) return null
     return {
       type: 'FeatureCollection' as const,
-      features: loadedTaskData.fields.flatMap((field) =>
-        field.guidanceLines
+      features: fields.flatMap((field) => {
+        const preview = includeGeneratedPreview && generatedPreview?.fieldId === field.id
+          ? generatedPreview.lines
+          : []
+        return [...field.guidanceLines, ...preview]
+          .filter((line) => !line.id.startsWith('generated-'))
           .filter((line) => line.points.length >= 2)
           .map((line) => ({
             type: 'Feature' as const,
@@ -184,11 +189,12 @@ export function useMapLayers() {
               __guidanceId: line.id,
               __guidanceName: line.name,
               __parentFieldName: field.name,
+              __source: line.source,
             },
-          })),
-      ),
+          }))
+      }),
     }
-  }, [loadedTaskData])
+  }, [fields, generatedPreview, includeGeneratedPreview])
 
   return { polygonLayer, guidanceLayer }
 }

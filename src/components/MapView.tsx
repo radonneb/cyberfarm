@@ -16,6 +16,7 @@ import type { Feature, GeoJsonObject } from 'geojson'
 import type { LatLngExpression } from 'leaflet'
 import type { AppGuidanceCollection, AppPolygonCollection } from '../types/geo'
 import type { FieldModel, GeoPoint } from '../models/taskData'
+import FieldNameLabels from './FieldNameLabels'
 import 'leaflet/dist/leaflet.css'
 
 type MapViewProps = {
@@ -114,7 +115,7 @@ function isGeneratedLineId(value: unknown) {
 function guidanceStyle(feature: Feature | undefined) {
   const guidanceId = feature?.properties?.__guidanceId
   const guidanceName = feature?.properties?.__guidanceName
-  const generated = isGeneratedLineId(guidanceId)
+  const generated = isGeneratedLineId(guidanceId) || feature?.properties?.__source === 'generated'
   const isBaseLine =
     generated &&
     (guidanceName === '0' || guidanceName === '+0' || guidanceName === '-0')
@@ -166,7 +167,7 @@ function ZoomAwareGeneratedLabels({
   return (
     <>
       {selectedField.guidanceLines
-        .filter((line) => line.id.startsWith('generated-'))
+        .filter((line) => line.source === 'generated' || line.id.startsWith('generated-'))
         .filter((line) => line.name === '0' || zoom >= 17)
         .filter((line, index) => line.name === '0' || zoom >= 18 || index % 4 === 0)
         .map((line) => {
@@ -368,6 +369,8 @@ export default function MapView({
       {!editingEnabled && (
         <ZoomAwareGeneratedLabels selectedField={selectedField} enabled />
       )}
+
+      <FieldNameLabels />
 
       <FitToSelection importedLayer={importedLayer} selectedFieldId={selectedFieldId} />
     </MapContainer>

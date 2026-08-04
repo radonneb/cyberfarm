@@ -8,7 +8,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
   const id = String(params.id)
   const row = await env.DB
     .prepare(`
-      SELECT id, farm_id, r2_key, original_name, content_type
+      SELECT id, farm_id, r2_key, original_name, content_type, size_bytes, created_at
       FROM files
       WHERE id = ?
     `)
@@ -52,6 +52,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
   headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(String(row.original_name))}`)
   headers.set('Cache-Control', 'private, no-store')
   headers.set('ETag', object.httpEtag)
+  headers.set('X-CyberFarm-File-Size', String(row.size_bytes ?? object.size))
+  headers.set('X-CyberFarm-File-Created-At', String(row.created_at ?? ''))
 
   return new Response(object.body, { headers })
 }
