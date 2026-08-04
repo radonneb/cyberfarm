@@ -1,5 +1,5 @@
 import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
-import { canAccessFarm, requireFarm } from '../../lib/farms'
+import { requireFarmZone } from '../../lib/farms'
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env, params }) => {
   const auth = await requireUser(request, env)
@@ -22,10 +22,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
     const farmId = String(row.farm_id ?? '').trim()
 
     if (farmId) {
-      allowed = (await canAccessFarm(auth.user, farmId, env)).allowed
-    }
-
-    if (!allowed) {
+      const farmAccess = await requireFarmZone(request, env, farmId, 'maps')
+      if (farmAccess.response) {
+        return json({ ok: false, error: 'File not found.' }, 404)
+      }
+      allowed = true
+    } else {
       const links = await env.DB
         .prepare('SELECT project_id FROM project_files WHERE file_id = ?')
         .bind(id)
@@ -67,7 +69,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
 
   const farmId = String(file.farm_id ?? '').trim()
   if (farmId) {
-    const farmAccess = await requireFarm(request, env, farmId, true)
+    const farmAccess = await requireFarmZone(request, env, farmId, 'maps', true)
     if (farmAccess.response) return farmAccess.response
   } else if (auth.user.role !== 'admin') {
     return json({ ok: false, error: 'File not found.' }, 404)

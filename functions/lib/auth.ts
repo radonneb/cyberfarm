@@ -1,6 +1,17 @@
 export type Env = {
   DB: D1Database
   FILES: R2Bucket
+  EMAIL?: {
+    send(message: {
+      to: string | { email: string; name?: string }
+      from: string | { email: string; name?: string }
+      subject: string
+      html?: string
+      text?: string
+    }): Promise<{ messageId?: string }>
+  }
+  EMAIL_FROM?: string
+  APP_NAME?: string
   ADMIN_EMAIL?: string
   ADMIN_PASSWORD?: string
 }
@@ -223,7 +234,7 @@ export async function ensureAdminFromEnvironment(
     .first<Record<string, unknown>>()
 
   if (existing) {
-    if (existing.role !== 'admin' || !Boolean(existing.active)) {
+    if (existing.role !== 'admin' || !existing.active) {
       await env.DB
         .prepare('UPDATE users SET role = ?, active = 1, updated_at = ? WHERE id = ?')
         .bind('admin', new Date().toISOString(), String(existing.id))

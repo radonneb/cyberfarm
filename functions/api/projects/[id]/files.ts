@@ -1,6 +1,6 @@
 import { canViewProject, json, requireUser, type Env } from '../../../lib/auth'
 import { claimFileForFarm } from '../../../lib/files'
-import { requireFarm } from '../../../lib/farms'
+import { requireFarmZone } from '../../../lib/farms'
 
 type AttachFileBody = { fileId?: string }
 
@@ -42,7 +42,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
   if (!project) return json({ ok: false, error: 'Project not found.' }, 404)
 
   const farmId = String(project.farm_id ?? '')
-  const farmAccess = await requireFarm(request, env, farmId, true)
+  const farmAccess = await requireFarmZone(request, env, farmId, 'maps', true)
   if (farmAccess.response) return farmAccess.response
 
   const body = (await request.json()) as AttachFileBody
@@ -78,7 +78,13 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
     .first<Record<string, unknown>>()
   if (!project) return json({ ok: false, error: 'Project not found.' }, 404)
 
-  const farmAccess = await requireFarm(request, env, String(project.farm_id ?? ''), true)
+  const farmAccess = await requireFarmZone(
+    request,
+    env,
+    String(project.farm_id ?? ''),
+    'maps',
+    true,
+  )
   if (farmAccess.response) return farmAccess.response
 
   const file = await env.DB

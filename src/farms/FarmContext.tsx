@@ -11,6 +11,9 @@ import { useAuth } from '../auth/AuthContext'
 import { apiRequest } from '../services/api'
 
 export type FarmRole = 'admin' | 'editor' | 'viewer'
+export type FarmZone = 'maps' | 'pivot' | 'bunker' | 'export' | 'access'
+
+export type FarmPermissions = Record<FarmZone, boolean>
 
 export type FarmSummary = {
   id: string
@@ -24,6 +27,7 @@ export type FarmSummary = {
 type FarmContextValue = {
   farms: FarmSummary[]
   activeFarm: FarmSummary | null
+  permissions: FarmPermissions
   loading: boolean
   error: string | null
   refreshFarms: () => Promise<void>
@@ -32,6 +36,14 @@ type FarmContextValue = {
 }
 
 const FarmContext = createContext<FarmContextValue | null>(null)
+
+const emptyPermissions = (): FarmPermissions => ({
+  maps: false,
+  pivot: false,
+  bunker: false,
+  export: false,
+  access: false,
+})
 
 const LEGACY_LARGE_KEYS = [
   'gargha_import_history',
@@ -48,6 +60,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [farms, setFarms] = useState<FarmSummary[]>([])
   const [activeFarm, setActiveFarm] = useState<FarmSummary | null>(null)
+  const [permissions, setPermissions] = useState<FarmPermissions>(emptyPermissions)
   const [loading, setLoading] = useState(Boolean(user))
   const [error, setError] = useState<string | null>(null)
 
@@ -55,6 +68,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setFarms([])
       setActiveFarm(null)
+      setPermissions(emptyPermissions())
       setLoading(false)
       return
     }
@@ -67,12 +81,17 @@ export function FarmProvider({ children }: { children: ReactNode }) {
         activeFarmId: string | null
       }>('/api/farms')
 
-      setFarms(response.farms)
-      setActiveFarm(
+      const nextActiveFarm =
         response.farms.find((farm) => farm.id === response.activeFarmId) ??
           response.farms[0] ??
-          null,
-      )
+          null
+      const permissionResponse = nextActiveFarm
+        ? await apiRequest<{ zones: FarmPermissions }>(`/api/farms/${nextActiveFarm.id}/permissions`)
+        : null
+
+      setFarms(response.farms)
+      setActiveFarm(nextActiveFarm)
+      setPermissions(permissionResponse?.zones ?? emptyPermissions())
       clearLegacyGeometryCache()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load farms.')
@@ -96,6 +115,13 @@ export function FarmProvider({ children }: { children: ReactNode }) {
         .sort((a, b) => a.name.localeCompare(b.name)),
     )
     setActiveFarm(response.farm)
+    setPermissions({
+      maps: true,
+      pivot: true,
+      bunker: true,
+      export: true,
+      access: true,
+    })
     return response.farm
   }
 
@@ -107,6 +133,10 @@ export function FarmProvider({ children }: { children: ReactNode }) {
 
     clearLegacyGeometryCache()
     setActiveFarm(response.farm)
+    const permissionResponse = await apiRequest<{ zones: FarmPermissions }>(
+      `/api/farms/${response.farm.id}/permissions`,
+    )
+    setPermissions(permissionResponse.zones)
     return response.farm
   }
 
@@ -114,13 +144,14 @@ export function FarmProvider({ children }: { children: ReactNode }) {
     () => ({
       farms,
       activeFarm,
+      permissions,
       loading,
       error,
       refreshFarms,
       createFarm,
       switchFarm,
     }),
-    [farms, activeFarm, loading, error, refreshFarms],
+    [farms, activeFarm, permissions, loading, error, refreshFarms],
   )
 
   return <FarmContext.Provider value={value}>{children}</FarmContext.Provider>

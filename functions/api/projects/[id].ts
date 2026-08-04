@@ -1,6 +1,7 @@
 import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
 import { claimFileForFarm } from '../../lib/files'
-import { requireFarm } from '../../lib/farms'
+import { FARM_ZONES, type FarmZone } from '../../lib/access'
+import { requireFarmZone } from '../../lib/farms'
 import { deleteProjectData, readProjectData, writeProjectData } from '../../lib/projectData'
 
 type UpdateProjectBody = {
@@ -8,6 +9,12 @@ type UpdateProjectBody = {
   fileName?: string
   projectData?: unknown
   fileId?: string | null
+  zone?: FarmZone
+}
+
+function normalizeWriteZone(value: unknown): FarmZone {
+  const zone = String(value ?? 'maps')
+  return (FARM_ZONES as readonly string[]).includes(zone) ? zone as FarmZone : 'maps'
 }
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env, params }) => {
@@ -84,7 +91,13 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
     if (!existing) return json({ ok: false, error: 'Project not found.' }, 404)
 
     const farmId = String(existing.farm_id ?? '')
-    const farmAccess = await requireFarm(request, env, farmId, true)
+    const farmAccess = await requireFarmZone(
+      request,
+      env,
+      farmId,
+      normalizeWriteZone(body.zone),
+      true,
+    )
     if (farmAccess.response) return farmAccess.response
 
     const now = new Date().toISOString()
@@ -155,7 +168,13 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
     .first<Record<string, unknown>>()
   if (!project) return json({ ok: false, error: 'Project not found.' }, 404)
 
-  const farmAccess = await requireFarm(request, env, String(project.farm_id ?? ''), true)
+  const farmAccess = await requireFarmZone(
+    request,
+    env,
+    String(project.farm_id ?? ''),
+    'maps',
+    true,
+  )
   if (farmAccess.response) return farmAccess.response
 
   const attachedFiles = await env.DB

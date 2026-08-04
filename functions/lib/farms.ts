@@ -1,4 +1,5 @@
 import { json, requireUser, type AuthUser, type Env } from './auth'
+import { getFarmZones, type FarmZone } from './access'
 
 export type FarmRole = 'admin' | 'editor' | 'viewer'
 export type FarmPermission = 'none' | 'view' | 'manage'
@@ -219,4 +220,26 @@ export async function requireFarm(
   }
 
   return { user: auth.user, role: access.role, response: null }
+}
+
+export async function requireFarmZone(
+  request: Request,
+  env: Env,
+  farmId: string,
+  zone: FarmZone,
+  manage = false,
+) {
+  const access = await requireFarm(request, env, farmId, manage)
+  if (access.response || !access.user) return access
+
+  const zones = await getFarmZones(access.user, farmId, env)
+  if (!zones[zone]) {
+    return {
+      user: null,
+      role: access.role,
+      response: json({ ok: false, error: `Access to ${zone} is not enabled.` }, 403),
+    }
+  }
+
+  return access
 }

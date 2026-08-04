@@ -1,6 +1,6 @@
 import { json, type Env } from '../../../lib/auth'
 import { claimFileForFarm } from '../../../lib/files'
-import { requireFarm } from '../../../lib/farms'
+import { requireFarmZone } from '../../../lib/farms'
 
 type CreateImportBody = {
   sourceFileId?: string | null
@@ -36,7 +36,7 @@ function duplicatePayload(existing: Record<string, unknown>) {
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env, params }) => {
   const farmId = String(params.id)
-  const access = await requireFarm(request, env, farmId)
+  const access = await requireFarmZone(request, env, farmId, 'maps')
   if (access.response) return access.response
 
   const fileHash = String(new URL(request.url).searchParams.get('fileHash') ?? '').trim()
@@ -78,7 +78,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const farmId = String(params.id)
-  const access = await requireFarm(request, env, farmId, true)
+  const access = await requireFarmZone(request, env, farmId, 'maps', true)
   if (access.response || !access.user) return access.response
 
   try {
