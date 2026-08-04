@@ -20,7 +20,9 @@ export type AuthUser = {
 
 const SESSION_COOKIE = 'cyberfarm_auth'
 const SESSION_DAYS = 7
-const PASSWORD_ITERATIONS = 600_000
+// Cloudflare workerd limits a single PBKDF2 operation to 100,000 iterations.
+// Keep hashes portable between local development and the deployed Worker.
+const PASSWORD_ITERATIONS = 100_000
 
 export function json(data: unknown, status = 200, headers?: HeadersInit) {
   return new Response(JSON.stringify(data), {
@@ -86,8 +88,14 @@ export async function verifyPassword(password: string, encodedHash: string) {
   const iterations = Number(iterationsRaw)
   if (!iterations || !saltRaw || !hashRaw) return false
 
-  const expected = base64ToBytes(hashRaw)
-  const actual = await derivePassword(password, base64ToBytes(saltRaw), iterations)
+  let expected: Uint8Array
+  let actual: Uint8Array
+  try {
+    expected = base64ToBytes(hashRaw)
+    actual = await derivePassword(password, base64ToBytes(saltRaw), iterations)
+  } catch {
+    return false
+  }
   if (actual.length !== expected.length) return false
 
   let different = 0
