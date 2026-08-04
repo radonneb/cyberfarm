@@ -2,7 +2,12 @@ import { canViewProject, json, requireUser, type Env } from '../../lib/auth'
 import { claimFileForFarm } from '../../lib/files'
 import { FARM_ZONES, type FarmZone } from '../../lib/access'
 import { requireFarmZone } from '../../lib/farms'
-import { deleteProjectData, readProjectData, writeProjectData } from '../../lib/projectData'
+import {
+  deleteProjectData,
+  ProjectVersionConflictError,
+  readProjectData,
+  writeProjectData,
+} from '../../lib/projectData'
 
 type UpdateProjectBody = {
   name?: string
@@ -11,6 +16,8 @@ type UpdateProjectBody = {
   fileId?: string | null
   zone?: FarmZone
   mergeProjectIds?: string[]
+  expectedRevision?: string | null
+  allowEmpty?: boolean
 }
 
 function normalizeWriteZone(value: unknown): FarmZone {
@@ -18,7 +25,7 @@ function normalizeWriteZone(value: unknown): FarmZone {
   return (FARM_ZONES as readonly string[]).includes(zone) ? zone as FarmZone : 'maps'
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ request, env, params }) => {
+export const onRequestGet: PagesFunction<Env> = async ({ request, env, params, waitUntil }) => {
   const auth = await requireUser(request, env)
   if (auth.response || !auth.user) return auth.response
 
@@ -39,24 +46,74 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
 
   if (!row) return json({ ok: false, error: 'Project not found.' }, 404)
 
-  let projectData: unknown = null
+  let stored: Awaited<ReturnType<typeof readProjectData>>
   try {
-    projectData = await readProjectData(row, env)
+    stored = await readProjectData(row, env)
   } catch (error) {
-    console.error('Read project data failed', error)
-    return json({ ok: false, error: 'Unable to load project map data.' }, 500)
+    console.error('Project snapshot read failed; source-file recovery will be offered', error)
+    stored = {
+      data: null,
+      revision: null,
+      fieldCount: 0,
+      source: 'missing',
+      warning: 'The project snapshot could not be read. It can be rebuilt from the farm source files.',
+    }
+  }
+  try {
+    if (stored.data && stored.source !== 'd1') {
+      const migrated = await writeProjectData(
+        env,
+        String(row.farm_id ?? ''),
+        id,
+        stored.data,
+        String(row.project_data_key ?? '') || null,
+        {
+          expectedRevision: null,
+          updatedBy: auth.user.id,
+          context: { waitUntil },
+        },
+      )
+      stored = {
+        ...stored,
+        revision: migrated.revision,
+        fieldCount: migrated.fieldCount,
+        source: 'd1',
+      }
+    }
+  } catch (error) {
+    if (error instanceof ProjectVersionConflictError) {
+      stored = await readProjectData(row, env)
+    } else {
+      console.error('Project data migration failed', error)
+    }
   }
 
-  const files = await env.DB
-    .prepare(`
+  const [files, recoveryFiles] = await Promise.all([
+    env.DB.prepare(`
       SELECT f.id, f.original_name, f.content_type, f.size_bytes, f.created_at
       FROM files f
       JOIN project_files pf ON pf.file_id = f.id
       WHERE pf.project_id = ?
       ORDER BY f.created_at DESC
-    `)
-    .bind(id)
-    .all()
+    `).bind(id).all(),
+    env.DB.prepare(`
+      SELECT
+        f.id,
+        f.original_name,
+        f.content_type,
+        f.size_bytes,
+        f.created_at,
+        fi.file_hash,
+        fi.completed_at
+      FROM farm_imports fi
+      JOIN files f ON f.id = fi.source_file_id
+      WHERE fi.farm_id = ?
+        AND fi.status = 'completed'
+        AND fi.source_file_id IS NOT NULL
+      ORDER BY fi.completed_at DESC, fi.created_at DESC
+      LIMIT 100
+    `).bind(String(row.farm_id ?? '')).all(),
+  ])
 
   return json({
     ok: true,
@@ -67,13 +124,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env, params })
       fileName: row.file_name ? String(row.file_name) : null,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
-      projectData,
+      projectData: stored.data,
+      revision: stored.revision,
+      fieldCount: stored.fieldCount,
+      dataSource: stored.source,
+      storageWarning: stored.warning,
       files: files.results ?? [],
+      recoveryFiles: recoveryFiles.results ?? [],
     },
   })
 }
 
-export const onRequestPut: PagesFunction<Env> = async ({ request, env, params }) => {
+export const onRequestPut: PagesFunction<Env> = async ({ request, env, params, waitUntil }) => {
   const auth = await requireUser(request, env)
   if (auth.response || !auth.user) return auth.response
 
@@ -82,9 +144,11 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
     const body = (await request.json()) as UpdateProjectBody
     const existing = await env.DB
       .prepare(`
-        SELECT id, name, file_name, farm_id, project_data_key
-        FROM projects
-        WHERE id = ?
+        SELECT p.id, p.name, p.file_name, p.farm_id, p.project_data_key,
+               ps.revision, COALESCE(ps.field_count, 0) AS field_count
+        FROM projects p
+        LEFT JOIN project_state ps ON ps.project_id = p.id
+        WHERE p.id = ?
       `)
       .bind(id)
       .first<Record<string, unknown>>()
@@ -112,14 +176,55 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
       return json({ ok: false, error: 'File not found.' }, 404)
     }
 
+    const mergeProjectIds = Array.isArray(body.mergeProjectIds)
+      ? [...new Set(body.mergeProjectIds.map((value) => String(value).trim()))]
+          .filter((projectId) => projectId && projectId !== id)
+      : []
+
+    if (mergeProjectIds.length) {
+      const placeholders = mergeProjectIds.map(() => '?').join(', ')
+      const matching = await env.DB
+        .prepare(`
+          SELECT id
+          FROM projects
+          WHERE farm_id = ? AND archived = 0 AND id IN (${placeholders})
+        `)
+        .bind(farmId, ...mergeProjectIds)
+        .all<Record<string, unknown>>()
+      if ((matching.results ?? []).length !== mergeProjectIds.length) {
+        return json({ ok: false, error: 'One or more workspaces cannot be merged.' }, 409)
+      }
+    }
+
+    let revision = existing.revision ? String(existing.revision) : null
     if (body.projectData !== undefined) {
-      const key = await writeProjectData(
+      const incomingFieldCount = body.projectData
+        && typeof body.projectData === 'object'
+        && 'fields' in body.projectData
+        && Array.isArray((body.projectData as { fields?: unknown }).fields)
+          ? (body.projectData as { fields: unknown[] }).fields.length
+          : 0
+      if (!body.allowEmpty && Number(existing.field_count ?? 0) > 0 && incomingFieldCount === 0) {
+        return json({
+          ok: false,
+          code: 'EMPTY_PROJECT_REJECTED',
+          error: 'The cloud farm contains fields. An empty browser state was not allowed to overwrite them. Press Sync now.',
+        }, 409)
+      }
+
+      const saved = await writeProjectData(
         env,
         farmId,
         id,
         body.projectData,
         String(existing.project_data_key ?? '') || null,
+        {
+          expectedRevision: body.expectedRevision ?? null,
+          updatedBy: auth.user.id,
+          context: { waitUntil },
+        },
       )
+      revision = saved.revision
 
       await env.DB
         .prepare(`
@@ -128,7 +233,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
               project_json = NULL, project_data_key = ?
           WHERE id = ?
         `)
-        .bind(name, fileName, now, key, id)
+        .bind(name, fileName, now, saved.key, id)
         .run()
     } else {
       await env.DB
@@ -151,25 +256,8 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
         .run()
     }
 
-    const mergeProjectIds = Array.isArray(body.mergeProjectIds)
-      ? [...new Set(body.mergeProjectIds.map((value) => String(value).trim()))]
-          .filter((projectId) => projectId && projectId !== id)
-      : []
-
     if (mergeProjectIds.length) {
       const placeholders = mergeProjectIds.map(() => '?').join(', ')
-      const matching = await env.DB
-        .prepare(`
-          SELECT id
-          FROM projects
-          WHERE farm_id = ? AND archived = 0 AND id IN (${placeholders})
-        `)
-        .bind(farmId, ...mergeProjectIds)
-        .all<Record<string, unknown>>()
-      if ((matching.results ?? []).length !== mergeProjectIds.length) {
-        return json({ ok: false, error: 'One or more workspaces cannot be merged.' }, 409)
-      }
-
       await env.DB.batch([
         env.DB
           .prepare(`
@@ -189,8 +277,15 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params })
       ])
     }
 
-    return json({ ok: true, updatedAt: now })
+    return json({ ok: true, updatedAt: now, revision })
   } catch (error) {
+    if (error instanceof ProjectVersionConflictError) {
+      return json({
+        ok: false,
+        code: 'PROJECT_VERSION_CONFLICT',
+        error: error.message,
+      }, 409)
+    }
     console.error('Update project failed', error)
     return json({ ok: false, error: 'Failed to update project.' }, 500)
   }
@@ -232,7 +327,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env, params
     env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id),
   ])
 
-  await deleteProjectData(env, project.project_data_key)
+  await deleteProjectData(env, id, project.project_data_key)
 
   for (const file of attachedFiles.results ?? []) {
     const fileId = String(file.id)

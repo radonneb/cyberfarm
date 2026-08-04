@@ -1738,6 +1738,10 @@ body {
   background: var(--danger-soft);
 }
 
+.sync-now-btn span { display: inline-block; font-size: 16px; }
+.sync-now-btn.syncing span { animation: sync-rotation .8s linear infinite; }
+@keyframes sync-rotation { to { transform: rotate(360deg); } }
+
 .workspace-content {
   min-height: 0;
 }
