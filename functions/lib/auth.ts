@@ -1,15 +1,7 @@
 export type Env = {
   DB: D1Database
   FILES: R2Bucket
-  EMAIL?: {
-    send(message: {
-      to: string | { email: string; name?: string }
-      from: string | { email: string; name?: string }
-      subject: string
-      html?: string
-      text?: string
-    }): Promise<{ messageId?: string }>
-  }
+  RESEND_API_KEY?: string
   EMAIL_FROM?: string
   APP_NAME?: string
   ADMIN_EMAIL?: string

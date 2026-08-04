@@ -6,13 +6,6 @@
     "EMAIL_FROM": "access@cyberfarms.org",
     "APP_NAME": "CyberFarms"
   },
-  "send_email": [
-    {
-      "name": "EMAIL",
-      "allowed_sender_addresses": ["access@cyberfarms.org"],
-      "remote": true
-    }
-  ],
   "d1_databases": [
     {
       "binding": "DB",
