@@ -11,7 +11,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 
   const result = await env.DB
     .prepare(`
-      SELECT id, original_name, content_type, size_bytes, uploaded_by, created_at
+      SELECT id, farm_id, original_name, content_type, size_bytes, uploaded_by, created_at
       FROM files
       ORDER BY created_at DESC
     `)
@@ -23,6 +23,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const auth = await requireUser(request, env)
   if (auth.response || !auth.user) return auth.response
+
+  let r2Key: string | null = null
 
   try {
     const formData = await request.formData()
@@ -39,7 +41,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const id = crypto.randomUUID()
     const name = value.name || 'upload.bin'
-    const r2Key = `farms/${farmId}/uploads/${id}-${safeFileName(name)}`
+    r2Key = `farms/${farmId}/uploads/${id}-${safeFileName(name)}`
     const createdAt = new Date().toISOString()
 
     await env.FILES.put(r2Key, value.stream(), {
@@ -56,8 +58,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     await env.DB
       .prepare(`
         INSERT INTO files (
-          id, r2_key, original_name, content_type, size_bytes, uploaded_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          id, r2_key, original_name, content_type, size_bytes,
+          uploaded_by, created_at, farm_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .bind(
         id,
@@ -67,6 +70,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         value.size,
         auth.user.id,
         createdAt,
+        farmId,
       )
       .run()
 
@@ -74,6 +78,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       ok: true,
       file: {
         id,
+        farmId,
         originalName: name,
         contentType: value.type || 'application/octet-stream',
         sizeBytes: value.size,
@@ -81,6 +86,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       },
     }, 201)
   } catch (error) {
+    if (r2Key) await env.FILES.delete(r2Key)
     console.error('Upload failed', error)
     return json({ ok: false, error: 'Failed to upload file.' }, 500)
   }
