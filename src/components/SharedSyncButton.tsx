@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useFarm } from '../farms/FarmContext'
 import type { TaskDataModel } from '../models/taskData'
 import { apiRequest } from '../services/api'
@@ -6,8 +6,6 @@ import { useAppStore } from '../store/appStore'
 
 type ProjectSummaryRaw = {
   id: string
-  updated_at?: string
-  updatedAt?: string
   data_revision?: number
   dataRevision?: number
   field_count?: number
@@ -26,7 +24,7 @@ type ProjectDetail = {
   fieldCount?: number
 }
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   position: 'fixed',
   right: 24,
   bottom: 24,
@@ -48,7 +46,7 @@ const buttonStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-const statusStyle: React.CSSProperties = {
+const statusStyle: CSSProperties = {
   position: 'fixed',
   right: 24,
   bottom: 78,
