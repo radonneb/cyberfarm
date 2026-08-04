@@ -1,4 +1,5 @@
 import { canViewProject, json, requireUser, type Env } from '../../../lib/auth'
+import { claimFileForFarm } from '../../../lib/files'
 import { requireFarm } from '../../../lib/farms'
 
 type AttachFileBody = { fileId?: string }
@@ -40,15 +41,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
     .first<Record<string, unknown>>()
   if (!project) return json({ ok: false, error: 'Project not found.' }, 404)
 
-  const farmAccess = await requireFarm(request, env, String(project.farm_id ?? ''), true)
+  const farmId = String(project.farm_id ?? '')
+  const farmAccess = await requireFarm(request, env, farmId, true)
   if (farmAccess.response) return farmAccess.response
 
   const body = (await request.json()) as AttachFileBody
   const fileId = String(body.fileId ?? '').trim()
   if (!fileId) return json({ ok: false, error: 'File is required.' }, 400)
 
-  const file = await env.DB.prepare('SELECT id FROM files WHERE id = ?').bind(fileId).first()
-  if (!file) return json({ ok: false, error: 'File not found.' }, 404)
+  if (!(await claimFileForFarm(fileId, farmId, env))) {
+    return json({ ok: false, error: 'File not found.' }, 404)
+  }
 
   await env.DB
     .prepare(`
