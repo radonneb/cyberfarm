@@ -67,6 +67,20 @@ body {
   color: var(--muted);
 }
 
+.runtime-error-detail {
+  display: block;
+  max-width: 100%;
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: rgba(238, 248, 243, 0.82);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 /* Login */
 .login-page {
   min-height: 100vh;
