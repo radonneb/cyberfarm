@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { useFarm, type FarmSummary, type FarmZone } from '../farms/FarmContext'
 import { useAppStore } from '../store/appStore'
-import { apiRequest } from '../services/api'
+import { ApiError, apiRequest } from '../services/api'
 import { cloneField, type TaskDataModel } from '../models/taskData'
 import HomePage from './HomePage'
 import CreateFieldPage from './CreateFieldPage'
@@ -41,6 +41,9 @@ type ProjectSummaryRaw = {
   updatedAt?: string
   file_count?: number
   fileCount?: number
+  field_count?: number
+  fieldCount?: number
+  revision?: string | null
 }
 
 type ProjectSummary = {
@@ -49,6 +52,18 @@ type ProjectSummary = {
   fileName: string | null
   updatedAt: string
   fileCount: number
+  fieldCount: number
+  revision: string | null
+}
+
+type RecoveryFile = {
+  id: string
+  original_name?: string
+  originalName?: string
+  content_type?: string | null
+  contentType?: string | null
+  file_hash?: string | null
+  fileHash?: string | null
 }
 
 type ProjectDetail = {
@@ -58,6 +73,11 @@ type ProjectDetail = {
   fileName: string | null
   projectData: TaskDataModel | null
   updatedAt: string
+  revision: string | null
+  fieldCount: number
+  dataSource?: 'd1' | 'r2-backup' | 'legacy' | 'missing'
+  storageWarning?: string | null
+  recoveryFiles?: RecoveryFile[]
 }
 
 type PendingImport = {
@@ -107,6 +127,8 @@ function normalizeProject(project: ProjectSummaryRaw): ProjectSummary {
     fileName: project.fileName ?? project.file_name ?? null,
     updatedAt: project.updatedAt ?? project.updated_at ?? '',
     fileCount: Number(project.fileCount ?? project.file_count ?? 0),
+    fieldCount: Number(project.fieldCount ?? project.field_count ?? 0),
+    revision: project.revision ? String(project.revision) : null,
   }
 }
 
@@ -348,6 +370,8 @@ export default function WorkspacePage() {
   const suppressFarmReloadRef = useRef<string | null>(null)
   const lastScheduledMutationRef = useRef(0)
   const remoteUpdatedAtRef = useRef('')
+  const remoteRevisionRef = useRef<string | null>(null)
+  const projectRevisionsRef = useRef(new Map<string, string | null>())
   const pendingSaveRef = useRef(false)
   const activeSaveRequestsRef = useRef(0)
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
@@ -357,9 +381,9 @@ export default function WorkspacePage() {
   const [activeTool, setActiveTool] = useState<WorkspaceTool>('overview')
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
-  activeProjectIdRef.current = activeProjectId
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [syncBusy, setSyncBusy] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [profileOpen, setProfileOpen] = useState(false)
@@ -368,6 +392,11 @@ export default function WorkspacePage() {
   const [mapMenuOpen, setMapMenuOpen] = useState(false)
   const [newFarmName, setNewFarmName] = useState('')
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
+
+  useEffect(() => {
+    activeProjectIdRef.current = activeProjectId
+  }, [activeProjectId])
+
   const saveZone: Exclude<FarmZone, 'access'> | null = activeTool === 'pivot'
     ? 'pivot'
     : activeTool === 'bunker'
@@ -428,54 +457,119 @@ export default function WorkspacePage() {
     return next
   }
 
+  const recoverFarmFromSources = async (farm: FarmSummary, details: ProjectDetail[]) => {
+    const candidates = details
+      .flatMap((detail) => detail.recoveryFiles ?? [])
+      .filter((file, index, all) => {
+        const identity = file.fileHash ?? file.file_hash ?? file.id
+        return all.findIndex((candidate) =>
+          (candidate.fileHash ?? candidate.file_hash ?? candidate.id) === identity,
+        ) === index
+      })
+
+    let recovered: TaskDataModel | null = null
+    let recoveredFiles = 0
+    for (const candidate of candidates) {
+      const name = candidate.originalName ?? candidate.original_name ?? 'farm-source.zip'
+      try {
+        const response = await fetch(`/api/files/${candidate.id}`, { credentials: 'include' })
+        if (!response.ok) continue
+        const blob = await response.blob()
+        const parsed = await parseAny(new File([blob], name, {
+          type: candidate.contentType ?? candidate.content_type ?? blob.type,
+        }))
+        if (!parsed.fields.length) continue
+        recovered = mergeTaskData(recovered, parsed, farm, 'overlay')
+        recoveredFiles += 1
+      } catch (error) {
+        console.error(`Source recovery failed for ${name}`, error)
+      }
+    }
+    return { task: recovered, recoveredFiles }
+  }
+
   const openFarmWorkspace = async (farm: FarmSummary, farmProjects: ProjectSummary[]) => {
     if (!farmProjects.length) return
     const requestId = ++projectLoadRef.current
     setLoadingProjects(true)
     try {
-      const details = await Promise.all(
+      const settled = await Promise.allSettled(
         [...farmProjects].reverse().map((project) =>
           apiRequest<{ project: ProjectDetail }>(`/api/projects/${project.id}`),
         ),
       )
       if (requestId !== projectLoadRef.current) return
 
+      const details = settled
+        .filter((result): result is PromiseFulfilledResult<{ project: ProjectDetail }> => result.status === 'fulfilled')
+        .map((result) => result.value)
+      if (!details.length) {
+        const failed = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+        throw failed?.reason instanceof Error ? failed.reason : new Error('Unable to load the shared farm database.')
+      }
+
       let combined: TaskDataModel | null = null
       for (const response of details) {
         if (!response.project.projectData) continue
         combined = mergeTaskData(combined, response.project.projectData, farm, 'overlay')
       }
-      if (!combined) throw new Error('This farm workspace has no map data.')
+      let recoveredFiles = 0
+      if (!combined || combined.fields.length === 0) {
+        const recovered = await recoverFarmFromSources(
+          farm,
+          details.map((response) => response.project),
+        )
+        if (recovered.task?.fields.length) {
+          combined = mergeTaskData(combined, recovered.task, farm, 'overlay')
+          recoveredFiles = recovered.recoveredFiles
+        }
+      }
+      if (!combined) throw new Error('The shared map snapshot is unavailable and no recoverable source file was found.')
       const cleaned = removeLegacyGeneratedLines(combined)
       combined = cleaned.task
 
-      const canonical = farmProjects[0]
+      const canonical = farmProjects.find((project) =>
+        details.some((response) => response.project.id === project.id),
+      ) ?? farmProjects[0]
+      const canonicalDetail = details.find((response) => response.project.id === canonical.id)?.project
       setActiveProjectId(canonical.id)
       loadTaskData(combined, canonical.fileName)
-      remoteUpdatedAtRef.current = details.find((item) => item.project.id === canonical.id)?.project.updatedAt ?? canonical.updatedAt
+      remoteUpdatedAtRef.current = canonicalDetail?.updatedAt ?? canonical.updatedAt
+      remoteRevisionRef.current = canonicalDetail?.revision ?? canonical.revision
+      projectRevisionsRef.current.set(canonical.id, remoteRevisionRef.current)
       setStatusMessage(null)
       setSaveState('idle')
 
-      if ((farmProjects.length > 1 || cleaned.removed) && canManageMaps) {
-        const saved = await apiRequest<{ updatedAt: string }>(`/api/projects/${canonical.id}`, {
+      const allProjectsLoaded = details.length === farmProjects.length
+      if ((recoveredFiles > 0 || (farmProjects.length > 1 && allProjectsLoaded) || cleaned.removed) && canManageMaps) {
+        const saved = await apiRequest<{ updatedAt: string; revision: string | null }>(`/api/projects/${canonical.id}`, {
           method: 'PUT',
           body: JSON.stringify({
             name: farm.name,
             fileName: canonical.fileName,
             projectData: combined,
             zone: 'maps',
-            mergeProjectIds: farmProjects.slice(1).map((project) => project.id),
+            expectedRevision: canonicalDetail?.revision ?? canonical.revision,
+            mergeProjectIds: allProjectsLoaded
+              ? farmProjects.filter((project) => project.id !== canonical.id).map((project) => project.id)
+              : [],
           }),
         })
         remoteUpdatedAtRef.current = saved.updatedAt
+        remoteRevisionRef.current = saved.revision
+        projectRevisionsRef.current.set(canonical.id, saved.revision)
         const consolidated = await loadProjects(farm.id)
         setProjects(consolidated)
         setStatusMessage(
-          farmProjects.length > 1
+          recoveredFiles > 0
+            ? `${combined.fields.length} fields were restored from ${recoveredFiles} source file${recoveredFiles === 1 ? '' : 's'} and saved to the shared database.`
+            : farmProjects.length > 1
             ? `${farmProjects.length} farm workspaces were safely combined. All fields and source files are now shown together.`
             : 'Old automatically generated preview lines were removed.',
         )
         setSaveState('saved')
+      } else if (recoveredFiles > 0) {
+        setStatusMessage(`${combined.fields.length} fields were restored for viewing. An editor can save the recovered map to the shared database.`)
       }
     } catch (error) {
       if (requestId === projectLoadRef.current) {
@@ -483,6 +577,7 @@ export default function WorkspacePage() {
         clearTaskData()
         setActiveProjectId(null)
       }
+      throw error
     } finally {
       if (requestId === projectLoadRef.current) setLoadingProjects(false)
     }
@@ -550,20 +645,27 @@ export default function WorkspacePage() {
       saveQueueRef.current = saveQueueRef.current.then(async () => {
         activeSaveRequestsRef.current += 1
         try {
-          const response = await apiRequest<{ updatedAt: string }>(`/api/projects/${projectId}`, {
+          const response = await apiRequest<{ updatedAt: string; revision: string | null }>(`/api/projects/${projectId}`, {
             method: 'PUT',
             body: JSON.stringify({
               name: projectName,
               fileName: snapshotName,
               projectData: snapshot,
               zone: snapshotZone,
+              expectedRevision: projectRevisionsRef.current.get(projectId) ?? null,
             }),
           })
-          if (projectId === activeProjectIdRef.current) remoteUpdatedAtRef.current = response.updatedAt
+          projectRevisionsRef.current.set(projectId, response.revision)
+          if (projectId === activeProjectIdRef.current) {
+            remoteUpdatedAtRef.current = response.updatedAt
+            remoteRevisionRef.current = response.revision
+          }
           setSaveState('saved')
         } catch (error) {
           setSaveState('error')
-          setStatusMessage(error instanceof Error ? error.message : 'Automatic save failed.')
+          setStatusMessage(error instanceof ApiError && error.code === 'PROJECT_VERSION_CONFLICT'
+            ? 'The farm changed in the shared database. Press Sync now to load the current version.'
+            : error instanceof Error ? error.message : 'Automatic save failed.')
         } finally {
           activeSaveRequestsRef.current = Math.max(0, activeSaveRequestsRef.current - 1)
           if (!saveTimerRef.current && activeSaveRequestsRef.current === 0) pendingSaveRef.current = false
@@ -593,10 +695,14 @@ export default function WorkspacePage() {
       if (pendingSaveRef.current || saveTimerRef.current) return
       try {
         const response = await apiRequest<{ project: ProjectDetail }>(`/api/projects/${projectId}`)
-        if (response.project.farmId !== farmId || response.project.updatedAt === remoteUpdatedAtRef.current) return
+        if (response.project.farmId !== farmId) return
+        if (response.project.revision && response.project.revision === remoteRevisionRef.current) return
+        if (!response.project.revision && response.project.updatedAt === remoteUpdatedAtRef.current) return
         if (!response.project.projectData) return
         const cleaned = removeLegacyGeneratedLines(response.project.projectData)
         remoteUpdatedAtRef.current = response.project.updatedAt
+        remoteRevisionRef.current = response.project.revision
+        projectRevisionsRef.current.set(projectId, response.project.revision)
         replaceTaskDataFromCloud(cleaned.task, response.project.fileName)
         setSaveState('saved')
         setStatusMessage('Cloud changes loaded.')
@@ -683,9 +789,10 @@ export default function WorkspacePage() {
       const existingProjectId = isCurrentFarm
         ? (activeProjectId ?? projects[0]?.id ?? null)
         : null
-      const serverTask = existingProjectId
-        ? (await apiRequest<{ project: ProjectDetail }>(`/api/projects/${existingProjectId}`)).project.projectData
+      const serverProject = existingProjectId
+        ? (await apiRequest<{ project: ProjectDetail }>(`/api/projects/${existingProjectId}`)).project
         : null
+      const serverTask = serverProject?.projectData ?? null
       const currentTask = serverTask && loadedTaskData && isCurrentFarm
         ? mergeTaskData(serverTask, loadedTaskData, targetFarm, 'replace-overlaps')
         : serverTask ?? loadedTaskData
@@ -694,15 +801,20 @@ export default function WorkspacePage() {
         : scopeTaskToFarm(pendingImport.data, targetFarm)
 
       if (existingProjectId) {
-        await apiRequest(`/api/projects/${existingProjectId}`, {
+        const saved = await apiRequest<{ updatedAt: string; revision: string | null }>(`/api/projects/${existingProjectId}`, {
           method: 'PUT',
           body: JSON.stringify({
             name: targetFarm.name,
             fileName: currentFileName ?? pendingImport.file.name,
             projectData: nextTask,
             fileId: upload.file.id,
+            zone: 'maps',
+            expectedRevision: serverProject?.revision ?? null,
           }),
         })
+        projectRevisionsRef.current.set(existingProjectId, saved.revision)
+        remoteRevisionRef.current = saved.revision
+        remoteUpdatedAtRef.current = saved.updatedAt
         await apiRequest(`/api/projects/${existingProjectId}/files`, {
           method: 'POST',
           body: JSON.stringify({ fileId: upload.file.id }),
@@ -710,7 +822,7 @@ export default function WorkspacePage() {
         loadTaskData(nextTask, currentFileName ?? pendingImport.file.name)
         setActiveProjectId(existingProjectId)
       } else {
-        const created = await apiRequest<{ id: string }>('/api/projects', {
+        const created = await apiRequest<{ id: string; revision: string | null }>('/api/projects', {
           method: 'POST',
           body: JSON.stringify({
             farmId: targetFarm.id,
@@ -723,6 +835,8 @@ export default function WorkspacePage() {
         const nextProjects = await loadProjects(targetFarm.id)
         setProjects(nextProjects)
         setActiveProjectId(created.id)
+        projectRevisionsRef.current.set(created.id, created.revision)
+        remoteRevisionRef.current = created.revision
         loadTaskData(nextTask, pendingImport.file.name)
       }
 
@@ -793,6 +907,28 @@ export default function WorkspacePage() {
     }
   }
 
+  const handleManualSync = async () => {
+    if (!activeFarm || syncBusy) return
+    setSyncBusy(true)
+    setStatusMessage('Synchronizing with the shared farm database…')
+    setErrorMessage(null)
+    try {
+      saveNowRef.current?.()
+      await saveQueueRef.current
+      const nextProjects = await loadProjects(activeFarm.id)
+      if (!nextProjects.length) {
+        throw new Error('No shared workspace exists for this farm yet.')
+      }
+      await openFarmWorkspace(activeFarm, nextProjects)
+      setStatusMessage(`Synchronized: ${activeFarm.name}.`)
+    } catch (error) {
+      setSaveState('error')
+      setStatusMessage(error instanceof Error ? error.message : 'Synchronization failed.')
+    } finally {
+      setSyncBusy(false)
+    }
+  }
+
   const handleNewMap = async () => {
     if (!canManageMaps || !activeFarm) return
 
@@ -804,7 +940,7 @@ export default function WorkspacePage() {
         farm: { id: activeFarm.id, name: activeFarm.name },
         fields: [],
       }
-      const created = await apiRequest<{ id: string }>('/api/projects', {
+      const created = await apiRequest<{ id: string; revision: string | null }>('/api/projects', {
         method: 'POST',
         body: JSON.stringify({
           farmId: activeFarm.id,
@@ -814,6 +950,8 @@ export default function WorkspacePage() {
         }),
       })
       setActiveProjectId(created.id)
+      projectRevisionsRef.current.set(created.id, created.revision)
+      remoteRevisionRef.current = created.revision
       loadTaskData(emptyTask, 'New Map.xml')
       await loadProjects(activeFarm.id)
       setActiveTool('create')
@@ -827,6 +965,9 @@ export default function WorkspacePage() {
 
   const visibleTools = tools.filter((tool) => allowedTools.has(tool.id))
   const canDisplayWorkspace = Boolean(loadedTaskData)
+  const cloudFieldCount = projects.reduce((sum, project) => sum + project.fieldCount, 0)
+  const sourceFileCount = projects.reduce((sum, project) => sum + project.fileCount, 0)
+  const hasStoredFarmData = projects.length > 0 && (cloudFieldCount > 0 || sourceFileCount > 0)
 
   const renderTool = () => {
     if (!canDisplayWorkspace && activeTool !== 'access') {
@@ -834,13 +975,23 @@ export default function WorkspacePage() {
         <section className="empty-workspace-state glass-panel">
           <div className="empty-workspace-symbol">⌖</div>
           <span className="section-kicker">{activeFarm?.name ?? 'No active farm'}</span>
-          <h2>{activeFarm ? 'Import fields or create an empty map' : 'Create your first farm'}</h2>
+          <h2>{activeFarm && hasStoredFarmData
+            ? 'Farm data is temporarily unavailable'
+            : activeFarm ? 'Import fields or create an empty map' : 'Create your first farm'}</h2>
           <p>
-            {activeFarm
+            {activeFarm && hasStoredFarmData
+              ? `The shared database still lists ${cloudFieldCount} fields and ${sourceFileCount} source files. Synchronize now to reload or rebuild the map from its source files.`
+              : activeFarm
               ? 'All fields, source files and later GeoTIFF or route layers will stay inside this farm.'
               : 'A farm is the top-level workspace. Data from different farms is never mixed on one map.'}
           </p>
-          {canManageMaps && (
+          {activeFarm && hasStoredFarmData ? (
+            <div className="action-row centered-actions">
+              <button className="primary-btn" onClick={() => void handleManualSync()} disabled={syncBusy}>
+                {syncBusy ? 'Synchronizing…' : 'Sync now'}
+              </button>
+            </div>
+          ) : canManageMaps && (
             <div className="action-row centered-actions">
               <button className="primary-btn" onClick={() => fileInputRef.current?.click()}>Import fields</button>
               {activeFarm && <button className="ghost-btn" onClick={() => void handleNewMap()}>Create empty map</button>}
@@ -1117,14 +1268,18 @@ export default function WorkspacePage() {
             <span className="eyebrow">Active farm</span>
             <h1>{activeFarm?.name ?? 'No farm selected'}</h1>
             <div className="workspace-meta">
-              <span>{loadedTaskData?.fields.length ?? 0} fields</span>
-              <span>{projects.reduce((sum, project) => sum + project.fileCount, 0)} source files</span>
+              <span>{loadedTaskData?.fields.length ?? cloudFieldCount} fields</span>
+              <span>{sourceFileCount} source files</span>
               <span className={`save-chip ${saveState}`}>{formatSaveState(saveState)}</span>
             </div>
           </div>
 
-          {canManageMaps && (
+          {activeFarm && (
             <div className="workspace-actions">
+              <button className={`ghost-btn sync-now-btn ${syncBusy ? 'syncing' : ''}`} onClick={() => void handleManualSync()} disabled={syncBusy || busy} title="Synchronize with the shared farm database">
+                <span aria-hidden="true">↻</span> {syncBusy ? 'Syncing…' : 'Sync now'}
+              </button>
+              {canManageMaps && <>
               <button className="ghost-btn undo-btn" onClick={undoLastChange} disabled={!canUndo || busy} title="Undo last map change">
                 ↶ Undo
               </button>
@@ -1132,6 +1287,7 @@ export default function WorkspacePage() {
               <button className="primary-btn" onClick={() => fileInputRef.current?.click()} disabled={busy}>
                 {busy ? 'Working…' : 'Import'}
               </button>
+              </>}
             </div>
           )}
 

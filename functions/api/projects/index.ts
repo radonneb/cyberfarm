@@ -28,9 +28,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const result = await env.DB
     .prepare(`
       SELECT p.id, p.name, p.file_name, p.created_at, p.updated_at,
-             p.farm_id, COUNT(pf.file_id) AS file_count
+             p.farm_id, COUNT(pf.file_id) AS file_count,
+             COALESCE(ps.field_count, 0) AS field_count,
+             ps.revision AS revision
       FROM projects p
       LEFT JOIN project_files pf ON pf.project_id = p.id
+      LEFT JOIN project_state ps ON ps.project_id = p.id
       WHERE p.farm_id = ? AND p.archived = 0
       GROUP BY p.id
       ORDER BY p.updated_at DESC
@@ -46,6 +49,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (auth.response || !auth.user) return auth.response
 
   let projectDataKey: string | null = null
+  let projectId: string | null = null
+  let projectRevision: string | null = null
 
   try {
     const body = (await request.json()) as CreateProjectBody
@@ -58,6 +63,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (access.response) return access.response
 
     const id = crypto.randomUUID()
+    projectId = id
     const now = new Date().toISOString()
     const name = String(body.name ?? 'Farm workspace').trim() || 'Farm workspace'
     const fileName = String(body.fileName ?? '').trim() || null
@@ -68,7 +74,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     if (body.projectData !== undefined) {
-      projectDataKey = await writeProjectData(env, farmId, id, body.projectData)
+      const stored = await writeProjectData(
+        env,
+        farmId,
+        id,
+        body.projectData,
+        null,
+        { expectedRevision: null, updatedBy: auth.user.id },
+      )
+      projectDataKey = stored.key
+      projectRevision = stored.revision
     }
 
     const statements: D1PreparedStatement[] = [
@@ -103,9 +118,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     await env.DB.batch(statements)
-    return json({ ok: true, id }, 201)
+    return json({ ok: true, id, revision: projectRevision }, 201)
   } catch (error) {
-    if (projectDataKey) await deleteProjectData(env, projectDataKey)
+    if (projectDataKey && projectId) await deleteProjectData(env, projectId, projectDataKey)
     console.error('Create project failed', error)
     return json({ ok: false, error: 'Failed to create project.' }, 500)
   }
