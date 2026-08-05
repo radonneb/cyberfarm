@@ -19,7 +19,7 @@ import type {
   EditorMode,
   GuidanceLine,
 } from '../models/taskData'
-import { uid } from '../models/taskData'
+import { normalizeTaskData, uid } from '../models/taskData'
 import { exportTaskData } from '../utils/taskDataExportService'
 import { parseTaskDataXmlFile } from '../utils/taskDataXmlParser'
 
@@ -694,9 +694,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const loadTaskData = (task: TaskDataModel, fileName: string | null) => {
-    setLoadedTaskData(task)
+    const normalized = normalizeTaskData(task)
+    setLoadedTaskData(normalized)
     setCurrentFileName(fileName)
-    setSelectedFieldId(task.fields[0]?.id ?? null)
+    setSelectedFieldId(normalized.fields[0]?.id ?? null)
     setEditorMode('view')
     setDraftCreate(emptyDraft())
     setGenerationResult(null)
@@ -707,12 +708,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const replaceTaskDataFromCloud = (task: TaskDataModel, fileName: string | null) => {
-    setLoadedTaskData(task)
+    const normalized = normalizeTaskData(task)
+    setLoadedTaskData(normalized)
     setCurrentFileName(fileName)
     setSelectedFieldId((current) =>
-      current && task.fields.some((field) => field.id === current)
+      current && normalized.fields.some((field) => field.id === current)
         ? current
-        : task.fields[0]?.id ?? null,
+        : normalized.fields[0]?.id ?? null,
     )
     setGenerationResult(null)
     setGeneratedPreview(null)
