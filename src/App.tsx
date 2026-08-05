@@ -6,6 +6,12 @@ import InvitePage from './pages/InvitePage'
 import WorkspacePage from './pages/WorkspacePage'
 import './App.css'
 
+function reloadCyberFarms() {
+  const url = new URL(window.location.href)
+  url.searchParams.set('reload', Date.now().toString())
+  window.location.replace(url.toString())
+}
+
 class RuntimeErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null }
 
@@ -25,7 +31,7 @@ class RuntimeErrorBoundary extends Component<{ children: ReactNode }, { error: E
           <div className="loading-mark">CF</div>
           <h1>CyberFarms needs to reload</h1>
           <p>A saved farm contains data from an older version. Your cloud files were not deleted.</p>
-          <button className="primary-btn" onClick={() => window.location.reload()}>Reload CyberFarms</button>
+          <button className="primary-btn" onClick={reloadCyberFarms}>Reload CyberFarms</button>
         </section>
       </main>
     )
