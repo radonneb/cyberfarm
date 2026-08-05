@@ -65,10 +65,15 @@ function FitToSelection({
 
   useEffect(() => {
     if (!selectedCollection?.features.length) return
-    const geoJsonLayer = L.geoJSON(selectedCollection as GeoJsonObject)
-    const bounds = geoJsonLayer.getBounds()
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [24, 24] })
+    try {
+      const geoJsonLayer = L.geoJSON(selectedCollection as GeoJsonObject)
+      const bounds = geoJsonLayer.getBounds()
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [24, 24] })
+      }
+    } catch (error) {
+      // A malformed legacy geometry must not take down the entire workspace.
+      console.error('Unable to fit the map to saved geometry', error)
     }
   }, [map, selectedCollection])
 
