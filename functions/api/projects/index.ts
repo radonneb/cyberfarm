@@ -1,7 +1,7 @@
 import { json, requireUser, type Env } from '../../lib/auth'
 import { claimFileForFarm } from '../../lib/files'
 import { canAccessFarm, getActiveFarm, requireFarmZone } from '../../lib/farms'
-import { deleteProjectData, writeProjectData } from '../../lib/projectData'
+import { deleteProjectData, ensureProjectDataSchema, writeProjectData } from '../../lib/projectData'
 
 type CreateProjectBody = {
   name?: string
@@ -25,6 +25,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const access = await canAccessFarm(auth.user, farmId, env)
   if (!access.allowed) return json({ ok: false, error: 'Farm not found.' }, 404)
 
+  await ensureProjectDataSchema(env)
   const result = await env.DB
     .prepare(`
       SELECT p.id, p.name, p.file_name, p.created_at, p.updated_at,

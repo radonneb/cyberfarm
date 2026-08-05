@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useFarm, type FarmSummary, type FarmZone } from '../farms/FarmContext'
 import { useAppStore } from '../store/appStore'
 import { ApiError, apiRequest } from '../services/api'
-import { cloneField, type TaskDataModel } from '../models/taskData'
+import { cloneField, normalizeTaskData, type TaskDataModel } from '../models/taskData'
 import HomePage from './HomePage'
 import CreateFieldPage from './CreateFieldPage'
 import EditFieldPage from './EditFieldPage'
@@ -143,18 +143,20 @@ function suggestedFarmName(file: File, task: TaskDataModel) {
 }
 
 function scopeTaskToFarm(task: TaskDataModel, farm: FarmSummary): TaskDataModel {
+  const normalized = normalizeTaskData(task)
   return {
-    ...task,
-    farm: { id: farm.id, name: farm.name, clientId: task.client?.id },
-    fields: task.fields.map((field) => ({ ...field, farmId: farm.id })),
+    ...normalized,
+    farm: { id: farm.id, name: farm.name, clientId: normalized.client?.id },
+    fields: normalized.fields.map((field) => ({ ...field, farmId: farm.id })),
   }
 }
 
 function removeLegacyGeneratedLines(task: TaskDataModel) {
+  const normalized = normalizeTaskData(task)
   let removed = false
   const cleaned: TaskDataModel = {
-    ...task,
-    fields: task.fields.map((field) => {
+    ...normalized,
+    fields: normalized.fields.map((field) => {
       const guidanceLines = field.guidanceLines.filter((line) => {
         const legacy = line.id.startsWith('generated-')
         if (legacy) removed = true

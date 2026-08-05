@@ -48,6 +48,25 @@ body {
   margin: 0 auto;
 }
 
+.runtime-error-screen {
+  padding: 24px;
+}
+
+.runtime-error-card {
+  width: min(560px, calc(100vw - 48px));
+  padding: 32px;
+}
+
+.runtime-error-card h1 {
+  margin: 18px 0 8px;
+  color: var(--text);
+}
+
+.runtime-error-card p {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
 /* Login */
 .login-page {
   min-height: 100vh;

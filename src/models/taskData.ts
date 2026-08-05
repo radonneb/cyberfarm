@@ -161,6 +161,91 @@ export type EditorMode = 'view' | 'drawField' | 'drawGuidance'
 
 export type ExportFormat = 'isoxml' | 'kml' | 'kmz' | 'shp' | 'fieldpackage'
 
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+}
+
+function textValue(value: unknown, fallback: string) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text || fallback
+}
+
+function optionalText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function normalizePoint(value: unknown, fallbackId: string): GeoPoint | null {
+  const point = recordValue(value)
+  const latitude = Number(point.latitude)
+  const longitude = Number(point.longitude)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+  return {
+    id: textValue(point.id, fallbackId),
+    latitude,
+    longitude,
+  }
+}
+
+/**
+ * Project snapshots can outlive the client version that created them. Keep the
+ * UI tolerant of old or partially recovered snapshots instead of letting one
+ * missing collection crash the whole React tree.
+ */
+export function normalizeTaskData(value: unknown): TaskDataModel {
+  const task = recordValue(value)
+  const rawFields = Array.isArray(task.fields) ? task.fields : []
+  const fields = rawFields.map((fieldValue, fieldIndex): FieldModel => {
+    const field = recordValue(fieldValue)
+    const fieldId = textValue(field.id, `legacy-field-${fieldIndex}`)
+    const rawBoundaries = Array.isArray(field.boundaries) ? field.boundaries : []
+    const boundaries = rawBoundaries.map((boundaryValue, boundaryIndex): FieldBoundary => {
+      const boundary = recordValue(boundaryValue)
+      const rawPoints = Array.isArray(boundary.points) ? boundary.points : []
+      return {
+        id: textValue(boundary.id, `${fieldId}-boundary-${boundaryIndex}`),
+        points: rawPoints
+          .map((point, pointIndex) => normalizePoint(
+            point,
+            `${fieldId}-boundary-${boundaryIndex}-point-${pointIndex}`,
+          ))
+          .filter((point): point is GeoPoint => Boolean(point)),
+      }
+    })
+    const rawGuidance = Array.isArray(field.guidanceLines) ? field.guidanceLines : []
+    const guidanceLines = rawGuidance.map((lineValue, lineIndex): GuidanceLine => {
+      const line = recordValue(lineValue)
+      const lineId = textValue(line.id, `${fieldId}-guidance-${lineIndex}`)
+      const rawPoints = Array.isArray(line.points) ? line.points : []
+      const source = line.source === 'generated' || line.source === 'route' ? line.source : undefined
+      return {
+        id: lineId,
+        name: textValue(line.name, `Guidance ${lineIndex + 1}`),
+        points: rawPoints
+          .map((point, pointIndex) => normalizePoint(point, `${lineId}-point-${pointIndex}`))
+          .filter((point): point is GeoPoint => Boolean(point)),
+        source,
+        sourceRouteId: optionalText(line.sourceRouteId),
+      }
+    })
+
+    return {
+      id: fieldId,
+      name: textValue(field.name, `Field ${fieldIndex + 1}`),
+      clientId: optionalText(field.clientId),
+      farmId: optionalText(field.farmId),
+      boundaries,
+      guidanceLines,
+    }
+  })
+
+  return {
+    client: task.client && typeof task.client === 'object' ? task.client as ClientModel : null,
+    farm: task.farm && typeof task.farm === 'object' ? task.farm as FarmModel : null,
+    fields,
+    tools: task.tools && typeof task.tools === 'object' ? task.tools as FarmToolData : undefined,
+  }
+}
+
 export function uid() {
   return crypto.randomUUID()
 }

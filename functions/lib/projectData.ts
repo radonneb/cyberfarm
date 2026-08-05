@@ -38,6 +38,51 @@ export class ProjectVersionConflictError extends Error {
 }
 
 const CHUNK_CHARACTERS = 200_000
+let projectDataSchemaReady: Promise<void> | null = null
+
+/**
+ * Pages deployments do not run D1 migrations automatically. Keep the new
+ * shared-project storage self-healing so a frontend deploy cannot start using
+ * project_state before the production database has received migration 0007.
+ */
+export async function ensureProjectDataSchema(env: Env) {
+  if (!projectDataSchemaReady) {
+    projectDataSchemaReady = env.DB.batch([
+      env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS project_state (
+          project_id TEXT PRIMARY KEY,
+          revision TEXT NOT NULL,
+          chunk_count INTEGER NOT NULL,
+          byte_length INTEGER NOT NULL DEFAULT 0,
+          field_count INTEGER NOT NULL DEFAULT 0,
+          checksum TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT
+        )
+      `),
+      env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS project_data_chunks (
+          project_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          chunk_index INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (project_id, revision, chunk_index)
+        )
+      `),
+      env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_project_data_chunks_project_revision
+        ON project_data_chunks(project_id, revision, chunk_index)
+      `),
+    ])
+      .then(() => undefined)
+      .catch((error) => {
+        projectDataSchemaReady = null
+        throw error
+      })
+  }
+  await projectDataSchemaReady
+}
 
 export function projectDataKey(farmId: string, projectId: string) {
   return `farms/${farmId}/projects/${projectId}/project.json`
@@ -69,6 +114,7 @@ function projectFieldCount(projectData: unknown) {
 }
 
 async function readD1ProjectData(projectId: string, env: Env): Promise<ProjectDataReadResult | null> {
+  await ensureProjectDataSchema(env)
   const state = await env.DB
     .prepare(`
       SELECT revision, chunk_count, byte_length, field_count, checksum
@@ -188,6 +234,7 @@ export async function writeProjectData(
     context?: Pick<ExecutionContext, 'waitUntil'>
   },
 ): Promise<ProjectDataWriteResult> {
+  await ensureProjectDataSchema(env)
   const payload = JSON.stringify(projectData ?? null)
   const chunks = splitPayload(payload)
   const revision = crypto.randomUUID()
@@ -290,6 +337,7 @@ export async function writeProjectData(
 }
 
 export async function deleteProjectData(env: Env, projectId: string, key: unknown) {
+  await ensureProjectDataSchema(env)
   await env.DB.batch([
     env.DB.prepare('DELETE FROM project_data_chunks WHERE project_id = ?').bind(projectId),
     env.DB.prepare('DELETE FROM project_state WHERE project_id = ?').bind(projectId),

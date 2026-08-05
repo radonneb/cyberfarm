@@ -4,6 +4,7 @@ import { FARM_ZONES, type FarmZone } from '../../lib/access'
 import { requireFarmZone } from '../../lib/farms'
 import {
   deleteProjectData,
+  ensureProjectDataSchema,
   ProjectVersionConflictError,
   readProjectData,
   writeProjectData,
@@ -141,6 +142,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env, params, w
 
   try {
     const id = String(params.id)
+    await ensureProjectDataSchema(env)
     const body = (await request.json()) as UpdateProjectBody
     const existing = await env.DB
       .prepare(`

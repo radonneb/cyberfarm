@@ -1,9 +1,36 @@
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { FarmProvider } from './farms/FarmContext'
 import LoginPage from './pages/LoginPage'
 import InvitePage from './pages/InvitePage'
 import WorkspacePage from './pages/WorkspacePage'
 import './App.css'
+
+class RuntimeErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('CyberFarms UI crashed', error, info)
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <main className="app-loading-screen runtime-error-screen">
+        <section className="glass-panel runtime-error-card">
+          <div className="loading-mark">CF</div>
+          <h1>CyberFarms needs to reload</h1>
+          <p>A saved farm contains data from an older version. Your cloud files were not deleted.</p>
+          <button className="primary-btn" onClick={() => window.location.reload()}>Reload CyberFarms</button>
+        </section>
+      </main>
+    )
+  }
+}
 
 function AppGate() {
   const { user, loading } = useAuth()
@@ -31,8 +58,10 @@ function AppGate() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppGate />
-    </AuthProvider>
+    <RuntimeErrorBoundary>
+      <AuthProvider>
+        <AppGate />
+      </AuthProvider>
+    </RuntimeErrorBoundary>
   )
 }
