@@ -57,8 +57,8 @@ export function FieldInfoPanel({ field }: { field: FieldModel | null }) {
     return <div className="empty-panel">Select a field to view its details.</div>
   }
 
-  const fieldClient = loadedTaskData?.client?.name ?? '—'
-  const fieldFarm = loadedTaskData?.farm?.name ?? '—'
+  const fieldClient = typeof loadedTaskData?.client?.name === 'string' ? loadedTaskData.client.name : '—'
+  const fieldFarm = typeof loadedTaskData?.farm?.name === 'string' ? loadedTaskData.farm.name : '—'
 
   return (
     <div className="details-stack">
