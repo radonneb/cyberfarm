@@ -186,6 +186,51 @@ function normalizePoint(value: unknown, fallbackId: string): GeoPoint | null {
   }
 }
 
+function normalizeClient(value: unknown): ClientModel | null {
+  if (!value || typeof value !== 'object') return null
+  const client = recordValue(value)
+  return {
+    id: textValue(client.id, 'legacy-client'),
+    name: textValue(client.name, 'Client'),
+  }
+}
+
+function normalizeFarm(value: unknown): FarmModel | null {
+  if (!value || typeof value !== 'object') return null
+  const farm = recordValue(value)
+  return {
+    id: textValue(farm.id, 'legacy-farm'),
+    name: textValue(farm.name, 'Farm'),
+    clientId: optionalText(farm.clientId),
+  }
+}
+
+function normalizeTools(value: unknown): FarmToolData | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const tools = recordValue(value)
+  const pivotTracks = tools.pivotTracks && typeof tools.pivotTracks === 'object' && !Array.isArray(tools.pivotTracks)
+    ? tools.pivotTracks as Record<string, PivotTrackConfig>
+    : undefined
+  const plantingPlans = tools.plantingPlans && typeof tools.plantingPlans === 'object' && !Array.isArray(tools.plantingPlans)
+    ? tools.plantingPlans as Record<string, PlantingPlanConfig>
+    : undefined
+  const mapLayers = Array.isArray(tools.mapLayers)
+    ? tools.mapLayers.filter((layer): layer is MapLayerConfig => Boolean(layer && typeof layer === 'object'))
+    : []
+  const routes = Array.isArray(tools.routes)
+    ? tools.routes.filter((route): route is RoutePlanConfig => Boolean(route && typeof route === 'object'))
+    : []
+  const rawMapView = recordValue(tools.mapView)
+
+  return {
+    pivotTracks,
+    plantingPlans,
+    mapLayers,
+    routes,
+    mapView: { showFieldLabels: rawMapView.showFieldLabels === true },
+  }
+}
+
 /**
  * Project snapshots can outlive the client version that created them. Keep the
  * UI tolerant of old or partially recovered snapshots instead of letting one
@@ -239,10 +284,10 @@ export function normalizeTaskData(value: unknown): TaskDataModel {
   })
 
   return {
-    client: task.client && typeof task.client === 'object' ? task.client as ClientModel : null,
-    farm: task.farm && typeof task.farm === 'object' ? task.farm as FarmModel : null,
+    client: normalizeClient(task.client),
+    farm: normalizeFarm(task.farm),
     fields,
-    tools: task.tools && typeof task.tools === 'object' ? task.tools as FarmToolData : undefined,
+    tools: normalizeTools(task.tools),
   }
 }
 
