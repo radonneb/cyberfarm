@@ -31,6 +31,7 @@ class RuntimeErrorBoundary extends Component<{ children: ReactNode }, { error: E
           <div className="loading-mark">CF</div>
           <h1>CyberFarms needs to reload</h1>
           <p>A saved farm contains data from an older version. Your cloud files were not deleted.</p>
+          <code className="runtime-error-detail">{this.state.error.message || 'Unknown runtime error'}</code>
           <button className="primary-btn" onClick={reloadCyberFarms}>Reload CyberFarms</button>
         </section>
       </main>
