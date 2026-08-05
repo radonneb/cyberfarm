@@ -19,7 +19,7 @@ export default function FieldNameLabels({ pane }: { pane?: string }) {
       return <Marker
         key={field.id}
         position={bounds.getCenter()}
-        pane={pane}
+        pane={pane ?? 'markerPane'}
         interactive={false}
         icon={L.divIcon({ className: 'field-name-marker', html: `<span>${escapeHtml(field.name)}</span>` })}
       />
